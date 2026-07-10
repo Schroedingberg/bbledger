@@ -1,25 +1,17 @@
-# bbledger infra — Oracle Cloud Always Free, via OpenTofu in CI
+# bbledger infra — Hetzner Cloud, via OpenTofu in CI
 
-Everything is applied from GitHub Actions (`infra` workflow → run with
-`apply`). Nothing here needs a local Terraform install.
-
-## Known Always-Free gotchas (read first)
-
-- **"Out of host capacity"**: free-tier A1 instances are scarce in popular
-  regions. Retry later, set `availability_domain_index` to 1 or 2, or —
-  the reliable fix — upgrade the account to **Pay-As-You-Go** (still 0€
-  while you only use Always-Free shapes).
-- **Idle reclamation**: Oracle reclaims Always-Free A1 instances with
-  sustained low utilization. A chat bot is idle by nature. PAYG upgrade
-  also removes this rule.
+One CAX11 (ARM, 2 vCPU/4GB, ~3.79€/mo) runs the bot. Everything is applied
+from GitHub Actions (`infra` workflow → run with `apply`); nothing needs a
+local Terraform install. The VM is disposable: all household state lives in
+the private data repo.
 
 ## The data repo (household state)
 
 `household.ledger` **and `config.edn`** live in a separate private repo
 (e.g. `bbledger-data`), not on the VM and not in this repo. cloud-init
 clones it on first boot; a systemd path unit pushes after every recorded
-entry. The VM is disposable: destroy + apply resumes from the clone.
-Config changes = commit to the data repo, then restart the bot.
+entry. `destroy` + `apply` resumes from the clone. Config changes = commit
+to the data repo, then restart the bot.
 
 One-time:
 1. Create the private repo with `household.ledger` (your rules + history)
@@ -29,36 +21,29 @@ One-time:
 3. Add `bbledger-deploy.pub` as a **deploy key with write access** on the
    data repo; the private half becomes the `DATA_DEPLOY_KEY` secret.
 
-## One-time setup (Oracle console)
+## One-time setup
 
-1. Create an Oracle Cloud account; note your **home region** (e.g.
-   `eu-frankfurt-1`) and **tenancy OCID**.
-2. Your user → API keys → *Add API key*: download the private key PEM,
-   note the **fingerprint** and **user OCID**.
-3. Object Storage → create bucket `bbledger-tfstate`. Note the
-   **namespace** (shown on the bucket page).
-4. Your user → Customer secret keys → *Generate*: this is the S3-compatible
-   **access/secret key pair** for the state backend.
-5. (Simplest) use the tenancy root compartment: compartment OCID = tenancy
-   OCID. Or create a `bbledger` compartment and use its OCID.
+1. **Hetzner**: Cloud Console → your project → Security → API tokens →
+   generate a **read/write token**.
+2. **State bucket** (any S3-compatible store; Backblaze B2's free tier
+   works well): create bucket `bbledger-tfstate` (private) and an
+   application key scoped to it. Note the S3 endpoint shown with the
+   bucket, e.g. `https://s3.eu-central-003.backblazeb2.com`, whose region
+   is the middle part (`eu-central-003`).
 
 ## GitHub secrets (repo → Settings → Secrets → Actions)
 
 | Secret | Value |
 |---|---|
-| `OCI_TENANCY_OCID` | tenancy OCID |
-| `OCI_USER_OCID` | user OCID |
-| `OCI_FINGERPRINT` | API key fingerprint |
-| `OCI_PRIVATE_KEY` | full PEM content of the API private key |
-| `OCI_REGION` | e.g. `eu-frankfurt-1` |
-| `OCI_COMPARTMENT_OCID` | compartment (or tenancy) OCID |
-| `OCI_NAMESPACE` | Object Storage namespace |
-| `OCI_STATE_BUCKET` | `bbledger-tfstate` |
-| `OCI_STATE_ACCESS_KEY` | customer secret key — access part |
-| `OCI_STATE_SECRET_KEY` | customer secret key — secret part |
+| `HCLOUD_TOKEN` | Hetzner Cloud API token (read/write) |
+| `STATE_BUCKET` | `bbledger-tfstate` |
+| `STATE_ENDPOINT` | e.g. `https://s3.eu-central-003.backblazeb2.com` |
+| `STATE_REGION` | e.g. `eu-central-003` |
+| `STATE_ACCESS_KEY` | application key id |
+| `STATE_SECRET_KEY` | application key secret |
 | `BBLEDGER_BOT_TOKEN` | bot token from @BotFather |
 | `DATA_REPO` | SSH url, e.g. `git@github.com:Schroedingberg/bbledger-data.git` |
-| `DATA_DEPLOY_KEY` | private half of the data-repo deploy key (PEM/openssh) |
+| `DATA_DEPLOY_KEY` | private half of the data-repo deploy key |
 | `GHCR_PULL_TOKEN` | GitHub PAT with `read:packages` (VM pulls the image) |
 | `SSH_PUBLIC_KEY` | your ssh key, for debugging the VM (optional) |
 
@@ -72,6 +57,6 @@ One-time:
    commit appearing in the data repo moments later.
 
 Redeploying app versions never touches infra: CI pushes a new image and
-`ssh ubuntu@<ip> sudo systemctl restart bbledger-bot` picks it up (IP is in
-the apply output). `destroy` is safe for the ledger: every entry is pushed
-to the data repo, and the next `apply` resumes from the clone.
+`ssh root@<ip> systemctl restart bbledger-bot` picks it up (IP is in the
+apply output). `destroy` is safe for the ledger: every entry is pushed to
+the data repo, and the next `apply` resumes from the clone.

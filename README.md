@@ -59,11 +59,12 @@ business-logic API; contracts are frozen in [CONTRACT.md](CONTRACT.md).
 
 Tests run on both runtimes: `bb test` and `clojure -M:test`.
 
-## Deployment — Oracle Cloud free tier (IaC)
+## Deployment — Hetzner Cloud (IaC)
 
 The reproducible path: OpenTofu config in [infra/](infra/) applied by the
-`infra` GitHub Actions workflow (plan/apply/destroy). One-time Oracle account
-setup and the secrets inventory are in [infra/README.md](infra/README.md).
+`infra` GitHub Actions workflow (plan/apply/destroy) — one small ARM server,
+household state in a private data repo, VM fully disposable. Setup and the
+secrets inventory are in [infra/README.md](infra/README.md).
 
 ## Deployment — any VPS (manual)
 

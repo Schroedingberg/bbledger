@@ -1,12 +1,12 @@
-# bbledger on Oracle Cloud Always Free (ARM A1). Applied from CI — see
+# bbledger on a Hetzner Cloud CAX11 (ARM, ~3.79€/mo). Applied from CI — see
 # .github/workflows/deploy.yml and infra/README.md for the required secrets.
 
 terraform {
   required_providers {
-    oci = { source = "oracle/oci" }
+    hcloud = { source = "hetznercloud/hcloud" }
   }
-  # OCI Object Storage, S3-compatible. bucket/region/endpoint arrive via
-  # -backend-config at init time (generated from secrets in the workflow).
+  # Any S3-compatible store works for state (we use Backblaze B2's free
+  # tier). bucket/region/endpoint arrive via -backend-config at init time.
   backend "s3" {
     key                         = "bbledger/terraform.tfstate"
     skip_region_validation      = true
@@ -18,31 +18,26 @@ terraform {
   }
 }
 
-provider "oci" {
-  tenancy_ocid = var.tenancy_ocid
-  user_ocid    = var.user_ocid
-  fingerprint  = var.fingerprint
-  private_key  = var.private_key
-  region       = var.region
+provider "hcloud" {
+  token = var.hcloud_token
 }
 
-variable "tenancy_ocid" { type = string }
-variable "user_ocid" { type = string }
-variable "fingerprint" { type = string }
-variable "private_key" {
+variable "hcloud_token" {
   type      = string
   sensitive = true
 }
-variable "region" { type = string }
-variable "compartment_ocid" { type = string }
+variable "server_type" {
+  type        = string
+  default     = "cax11"
+  description = "cax11 = ARM 2vCPU/4GB; the CI image is multi-arch, so x86 types work too"
+}
+variable "location" {
+  type    = string
+  default = "fsn1"
+}
 variable "ssh_public_key" {
   type    = string
   default = ""
-}
-variable "availability_domain_index" {
-  type        = number
-  default     = 0
-  description = "Try 1 or 2 on 'Out of host capacity' errors"
 }
 variable "bot_token" {
   type      = string
@@ -67,96 +62,51 @@ variable "ghcr_token" {
   description = "PAT with read:packages, for the VM to pull the private image"
 }
 
-data "oci_identity_availability_domains" "ads" {
-  compartment_id = var.tenancy_ocid
+resource "hcloud_ssh_key" "admin" {
+  count      = var.ssh_public_key == "" ? 0 : 1
+  name       = "bbledger-admin"
+  public_key = var.ssh_public_key
 }
 
-data "oci_core_images" "ubuntu_arm" {
-  compartment_id           = var.compartment_ocid
-  operating_system         = "Canonical Ubuntu"
-  operating_system_version = "24.04"
-  shape                    = "VM.Standard.A1.Flex"
-  sort_by                  = "TIMECREATED"
-  sort_order               = "DESC"
-}
-
-resource "oci_core_vcn" "net" {
-  compartment_id = var.compartment_ocid
-  cidr_blocks    = ["10.0.0.0/24"]
-  display_name   = "bbledger"
-  dns_label      = "bbledger"
-}
-
-resource "oci_core_internet_gateway" "igw" {
-  compartment_id = var.compartment_ocid
-  vcn_id         = oci_core_vcn.net.id
-  display_name   = "bbledger"
-}
-
-resource "oci_core_default_route_table" "rt" {
-  manage_default_resource_id = oci_core_vcn.net.default_route_table_id
-  route_rules {
-    destination       = "0.0.0.0/0"
-    network_entity_id = oci_core_internet_gateway.igw.id
+# long-polling needs no inbound service ports; expose sshd only
+resource "hcloud_firewall" "ssh_only" {
+  name = "bbledger-ssh-only"
+  rule {
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "22"
+    source_ips = ["0.0.0.0/0", "::/0"]
   }
 }
 
-# The VCN's default security list already allows SSH in + all egress,
-# which is all a long-polling bot needs (no inbound service ports).
-resource "oci_core_subnet" "sub" {
-  compartment_id = var.compartment_ocid
-  vcn_id         = oci_core_vcn.net.id
-  cidr_block     = "10.0.0.0/24"
-  display_name   = "bbledger"
-  dns_label      = "bot"
-}
+resource "hcloud_server" "bot" {
+  name         = "bbledger-bot"
+  server_type  = var.server_type
+  image        = "ubuntu-24.04"
+  location     = var.location
+  ssh_keys     = hcloud_ssh_key.admin[*].id
+  firewall_ids = [hcloud_firewall.ssh_only.id]
 
-resource "oci_core_instance" "bot" {
-  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[var.availability_domain_index].name
-  compartment_id      = var.compartment_ocid
-  display_name        = "bbledger-bot"
-  shape               = "VM.Standard.A1.Flex"
+  user_data = templatefile("${path.module}/cloud-init.yaml", {
+    bot_token       = var.bot_token
+    data_repo       = var.data_repo
+    data_deploy_key = var.data_deploy_key
+    ghcr_user       = var.ghcr_user
+    ghcr_token      = var.ghcr_token
+    bot_unit        = file("${path.module}/../deploy/bbledger-bot.service")
+    summary_unit    = file("${path.module}/../deploy/bbledger-summary.service")
+    summary_timer   = file("${path.module}/../deploy/bbledger-summary.timer")
+    push_unit       = file("${path.module}/../deploy/bbledger-push.service")
+    push_path       = file("${path.module}/../deploy/bbledger-push.path")
+  })
 
-  shape_config {
-    ocpus         = 1
-    memory_in_gbs = 6
-  }
-
-  source_details {
-    source_type = "image"
-    source_id   = data.oci_core_images.ubuntu_arm.images[0].id
-  }
-
-  create_vnic_details {
-    subnet_id        = oci_core_subnet.sub.id
-    assign_public_ip = true
-  }
-
-  metadata = {
-    ssh_authorized_keys = var.ssh_public_key
-    user_data = base64encode(templatefile("${path.module}/cloud-init.yaml", {
-      bot_token       = var.bot_token
-      data_repo       = var.data_repo
-      data_deploy_key = var.data_deploy_key
-      ghcr_user       = var.ghcr_user
-      ghcr_token      = var.ghcr_token
-      bot_unit        = file("${path.module}/../deploy/bbledger-bot.service")
-      summary_unit    = file("${path.module}/../deploy/bbledger-summary.service")
-      summary_timer   = file("${path.module}/../deploy/bbledger-summary.timer")
-      push_unit       = file("${path.module}/../deploy/bbledger-push.service")
-      push_path       = file("${path.module}/../deploy/bbledger-push.path")
-    }))
-  }
-
-  # a newer Ubuntu image or edited cloud-init must not silently rebuild the
-  # VM that holds the ledger data — recreate deliberately via taint/destroy
+  # an edited cloud-init must not silently rebuild a running VM — recreate
+  # deliberately via taint/destroy (state lives in the data repo anyway)
   lifecycle {
-    ignore_changes = [source_details, metadata]
+    ignore_changes = [user_data]
   }
-
-  preserve_boot_volume = false
 }
 
 output "public_ip" {
-  value = oci_core_instance.bot.public_ip
+  value = hcloud_server.bot.ipv4_address
 }
