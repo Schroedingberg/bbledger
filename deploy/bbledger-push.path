@@ -1,0 +1,10 @@
+# /etc/systemd/system/bbledger-push.path — push the data repo on every change.
+[Unit]
+Description=Watch the ledger and trigger a backup push
+
+[Path]
+PathModified=/srv/bbledger/data/household.ledger
+Unit=bbledger-push.service
+
+[Install]
+WantedBy=multi-user.target

@@ -26,7 +26,8 @@ jobs:
       TF_VAR_compartment_ocid: ${{ secrets.OCI_COMPARTMENT_OCID }}
       TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
       TF_VAR_bot_token: ${{ secrets.BBLEDGER_BOT_TOKEN }}
-      TF_VAR_config_edn: ${{ secrets.BBLEDGER_CONFIG_EDN }}
+      TF_VAR_data_repo: ${{ secrets.DATA_REPO }}
+      TF_VAR_data_deploy_key: ${{ secrets.DATA_DEPLOY_KEY }}
       TF_VAR_ghcr_token: ${{ secrets.GHCR_PULL_TOKEN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.OCI_STATE_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.OCI_STATE_SECRET_KEY }}

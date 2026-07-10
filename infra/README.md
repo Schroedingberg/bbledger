@@ -13,6 +13,22 @@ Everything is applied from GitHub Actions (`infra` workflow → run with
   sustained low utilization. A chat bot is idle by nature. PAYG upgrade
   also removes this rule.
 
+## The data repo (household state)
+
+`household.ledger` **and `config.edn`** live in a separate private repo
+(e.g. `bbledger-data`), not on the VM and not in this repo. cloud-init
+clones it on first boot; a systemd path unit pushes after every recorded
+entry. The VM is disposable: destroy + apply resumes from the clone.
+Config changes = commit to the data repo, then restart the bot.
+
+One-time:
+1. Create the private repo with `household.ledger` (your rules + history)
+   and a filled-in `config.edn` (start from `config.sample.edn`;
+   `:ledger-file` stays `"/data/household.ledger"`).
+2. Generate a dedicated keypair: `ssh-keygen -t ed25519 -f bbledger-deploy -N ""`.
+3. Add `bbledger-deploy.pub` as a **deploy key with write access** on the
+   data repo; the private half becomes the `DATA_DEPLOY_KEY` secret.
+
 ## One-time setup (Oracle console)
 
 1. Create an Oracle Cloud account; note your **home region** (e.g.
@@ -41,7 +57,8 @@ Everything is applied from GitHub Actions (`infra` workflow → run with
 | `OCI_STATE_ACCESS_KEY` | customer secret key — access part |
 | `OCI_STATE_SECRET_KEY` | customer secret key — secret part |
 | `BBLEDGER_BOT_TOKEN` | bot token from @BotFather |
-| `BBLEDGER_CONFIG_EDN` | full content of your filled-in config.edn |
+| `DATA_REPO` | SSH url, e.g. `git@github.com:Schroedingberg/bbledger-data.git` |
+| `DATA_DEPLOY_KEY` | private half of the data-repo deploy key (PEM/openssh) |
 | `GHCR_PULL_TOKEN` | GitHub PAT with `read:packages` (VM pulls the image) |
 | `SSH_PUBLIC_KEY` | your ssh key, for debugging the VM (optional) |
 
@@ -49,18 +66,12 @@ Everything is applied from GitHub Actions (`infra` workflow → run with
 
 1. Actions → `infra` → *Run workflow* → `plan`; review the output.
 2. Run again with `apply`. The VM boots, cloud-init installs docker + git,
-   writes `/srv/bbledger/data/config.edn`, initializes the data git repo,
-   and starts `bbledger-bot.service` + the summary timer.
-3. `household.ledger` starts **empty** — copy your real rules/history in
-   once (the public IP is in the apply output):
-   ```sh
-   scp household.ledger ubuntu@<ip>:/srv/bbledger/data/
-   ssh ubuntu@<ip> 'cd /srv/bbledger/data && git add -A && git commit -m "real ledger"'
-   ```
-4. Send `12,30 Test` in the Telegram group; expect the ✓.
+   clones the data repo (ledger + config), and starts the bot, the summary
+   timer, and the backup-push path unit.
+3. Send `12,30 Test` in the Telegram group; expect the ✓ — and the entry
+   commit appearing in the data repo moments later.
 
 Redeploying app versions never touches infra: CI pushes a new image and
-`ssh ubuntu@<ip> sudo systemctl restart bbledger-bot` picks it up.
-`destroy` tears everything down; the ledger data dies with it, which is why
-the bot's git history should be pushed somewhere or backed up if you care
-(a private GitHub data repo + a cron `git push` is the natural extension).
+`ssh ubuntu@<ip> sudo systemctl restart bbledger-bot` picks it up (IP is in
+the apply output). `destroy` is safe for the ledger: every entry is pushed
+to the data repo, and the next `apply` resumes from the clone.

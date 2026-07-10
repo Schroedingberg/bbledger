@@ -48,10 +48,14 @@ variable "bot_token" {
   type      = string
   sensitive = true
 }
-variable "config_edn" {
+variable "data_repo" {
+  type        = string
+  description = "SSH url of the private data repo holding household.ledger + config.edn"
+}
+variable "data_deploy_key" {
   type        = string
   sensitive   = true
-  description = "Full content of config.edn (see config.sample.edn)"
+  description = "SSH private key whose public half is a write deploy key on the data repo"
 }
 variable "ghcr_user" {
   type    = string
@@ -131,13 +135,16 @@ resource "oci_core_instance" "bot" {
   metadata = {
     ssh_authorized_keys = var.ssh_public_key
     user_data = base64encode(templatefile("${path.module}/cloud-init.yaml", {
-      bot_token     = var.bot_token
-      config_edn    = var.config_edn
-      ghcr_user     = var.ghcr_user
-      ghcr_token    = var.ghcr_token
-      bot_unit      = file("${path.module}/../deploy/bbledger-bot.service")
-      summary_unit  = file("${path.module}/../deploy/bbledger-summary.service")
-      summary_timer = file("${path.module}/../deploy/bbledger-summary.timer")
+      bot_token       = var.bot_token
+      data_repo       = var.data_repo
+      data_deploy_key = var.data_deploy_key
+      ghcr_user       = var.ghcr_user
+      ghcr_token      = var.ghcr_token
+      bot_unit        = file("${path.module}/../deploy/bbledger-bot.service")
+      summary_unit    = file("${path.module}/../deploy/bbledger-summary.service")
+      summary_timer   = file("${path.module}/../deploy/bbledger-summary.timer")
+      push_unit       = file("${path.module}/../deploy/bbledger-push.service")
+      push_path       = file("${path.module}/../deploy/bbledger-push.path")
     }))
   }
 

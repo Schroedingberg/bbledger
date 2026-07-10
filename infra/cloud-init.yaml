@@ -1,6 +1,8 @@
 #cloud-config
-# Provisions the bbledger bot host. The systemd units are the SAME files as
-# deploy/bbledger-*.{service,timer}, injected verbatim by templatefile().
+# Provisions the bbledger bot host. State (household.ledger + config.edn)
+# comes from the private data repo — this file only handles credentials and
+# services. The systemd units are the SAME files as deploy/bbledger-*,
+# injected verbatim by templatefile().
 package_update: true
 packages:
   - docker.io
@@ -11,10 +13,10 @@ write_files:
     permissions: "0600"
     content: |
       BBLEDGER_BOT_TOKEN=${bot_token}
-  - path: /srv/bbledger/data/config.edn
-    permissions: "0644"
+  - path: /root/.ssh/id_ed25519
+    permissions: "0600"
     content: |
-      ${indent(6, config_edn)}
+      ${indent(6, data_deploy_key)}
   - path: /etc/systemd/system/bbledger-bot.service
     content: |
       ${indent(6, bot_unit)}
@@ -24,20 +26,22 @@ write_files:
   - path: /etc/systemd/system/bbledger-summary.timer
     content: |
       ${indent(6, summary_timer)}
+  - path: /etc/systemd/system/bbledger-push.service
+    content: |
+      ${indent(6, push_unit)}
+  - path: /etc/systemd/system/bbledger-push.path
+    content: |
+      ${indent(6, push_path)}
 
 runcmd:
   - systemctl enable --now docker
-  # data repo: the ledger + config live here; the bot commits every entry.
-  # household.ledger starts EMPTY — scp your rules/history in (see infra/README).
+  - ssh-keyscan github.com >> /root/.ssh/known_hosts
   - |
     if [ ! -d /srv/bbledger/data/.git ]; then
-      cd /srv/bbledger/data
-      git init
-      git config user.name bbledger-bot
-      git config user.email bot@localhost
-      touch household.ledger
-      git add -A && git commit -m init
+      git clone '${data_repo}' /srv/bbledger/data
+      git -C /srv/bbledger/data config user.name bbledger-bot
+      git -C /srv/bbledger/data config user.email bot@localhost
     fi
   - echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_user}' --password-stdin
   - systemctl daemon-reload
-  - systemctl enable --now bbledger-bot.service bbledger-summary.timer
+  - systemctl enable --now bbledger-bot.service bbledger-summary.timer bbledger-push.path

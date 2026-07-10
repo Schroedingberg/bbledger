@@ -1,0 +1,8 @@
+# /etc/systemd/system/bbledger-push.service — one push, triggered by the
+# path unit. A failed push (offline) is retried on the next ledger change.
+[Unit]
+Description=Push the bbledger data repo to its backup remote
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/git -C /srv/bbledger/data push origin HEAD

@@ -4,3 +4,5 @@
 .nrepl-port
 *.class
 config.edn
+infra/.terraform/
+*.tfstate*
