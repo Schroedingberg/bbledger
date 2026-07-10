@@ -1,0 +1,86 @@
+# bbledger
+
+Tiny hledger-subset for splitting household costs by income ratio, plus a
+Telegram bot for day-to-day recording. The ledger file is the database:
+plain text, hledger-compatible, one git commit per bot entry.
+
+## CLI (babashka)
+
+```sh
+bb ledger bal Verrechnung --auto   # settlement: negative = owes, positive = is owed
+bb ledger is                       # income statement
+bb ledger bs                       # balance sheet
+bb test                            # full suite (needs hledger for conformance)
+```
+
+## Telegram bot
+
+In the dedicated group, any message starting with an amount **with decimals**
+records an expense, paid by the sender:
+
+```
+45.60 Router                      -> Expenses:Sonstiges (default category)
+12,30 Drogerie #Haushalt:Drogerie -> Expenses:Haushalt:Drogerie
+/bal        settlement (who owes whom)
+/summary    month-to-date by category
+/undo       revert the last recorded expense (git revert)
+/help       usage
+```
+
+Everything else is ignored. Malformed input never reaches the ledger: the bot
+appends a canonically rendered block, re-parses the whole file, and rolls back
+on any failure before confirming.
+
+## Architecture
+
+Functional core / imperative shell — `ledger.core` is the only public
+business-logic API; contracts are frozen in [CONTRACT.md](CONTRACT.md).
+
+| namespace       | role                                              | runtime  |
+|-----------------|---------------------------------------------------|----------|
+| `ledger.parse`  | journal text -> data (instaparse)                 | bb + JVM |
+| `ledger.report` | balances, auto-posting rules, rendering           | bb + JVM |
+| `ledger.core`   | public facade: expense, settlement, summary, ...  | bb + JVM |
+| `ledger.bot`    | pure: updates -> effect descriptions              | bb + JVM |
+| `ledger.store`  | append + validate + git commit per entry          | bb + JVM |
+| `ledger.main`   | clj-tg-bot-api long-polling wiring                | JVM only |
+| `ledger.cli`    | `bb ledger` subcommands                           | bb       |
+
+Tests run on both runtimes: `bb test` and `clojure -M:test`.
+
+## Deployment (VPS)
+
+1. **Bot**: create via [@BotFather](https://t.me/BotFather), keep the token.
+   Make a dedicated group with the two of you + the bot. Get the group
+   chat-id and both user-ids (e.g. via `getUpdates` in the browser after
+   posting once: `https://api.telegram.org/bot<TOKEN>/getUpdates`).
+2. **Data repo** on the VPS — the canonical ledger; the bot is its only writer:
+   ```sh
+   mkdir -p /srv/bbledger/data && cd /srv/bbledger/data
+   git init
+   git config user.name "bbledger-bot" && git config user.email "bot@localhost"
+   cp /path/to/household.ledger .        # rules + history
+   git add . && git commit -m init
+   ```
+3. **Config**: `cp config.sample.edn /srv/bbledger/data/config.edn` and fill in:
+   ```clojure
+   {:chat-id          -100123456789
+    :ledger-file      "/data/household.ledger"
+    :users            {111111111 "Alice", 222222222 "Bob"}
+    :default-category ["Sonstiges"]
+    :tz               "Europe/Berlin"}
+   ```
+4. **Token**: `echo 'BBLEDGER_BOT_TOKEN=...' > /etc/bbledger.env && chmod 600 /etc/bbledger.env`
+5. **Image + units** — CI publishes the image to GHCR on every push to main
+   (private package, so log the VPS in once with a PAT that has read:packages):
+   ```sh
+   docker login ghcr.io -u Schroedingberg      # paste the PAT
+   cp deploy/bbledger-*.{service,timer} /etc/systemd/system/
+   systemctl enable --now bbledger-bot.service bbledger-summary.timer
+   ```
+   Deploying a new version = `systemctl restart bbledger-bot` (the unit pulls
+   `ghcr.io/schroedingberg/bbledger:latest` on start). Building locally
+   instead: `docker build -f deploy/Dockerfile -t ghcr.io/schroedingberg/bbledger:latest .`
+
+Local smoke run without Docker (JVM 21+):
+`BBLEDGER_CONFIG=... BBLEDGER_BOT_TOKEN=... clojure -M:bot`

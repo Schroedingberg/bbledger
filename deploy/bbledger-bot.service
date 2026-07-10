@@ -1,0 +1,21 @@
+# /etc/systemd/system/bbledger-bot.service
+# Expects /etc/bbledger.env with BBLEDGER_BOT_TOKEN=... (chmod 600)
+[Unit]
+Description=bbledger Telegram bot
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+EnvironmentFile=/etc/bbledger.env
+# a restart deploys the newest CI-built image (pull failure tolerated offline)
+ExecStartPre=-/usr/bin/docker pull ghcr.io/schroedingberg/bbledger:latest
+ExecStartPre=-/usr/bin/docker rm -f bbledger-bot
+ExecStart=/usr/bin/docker run --rm --name bbledger-bot \
+    -e BBLEDGER_BOT_TOKEN \
+    -v /srv/bbledger/data:/data \
+    ghcr.io/schroedingberg/bbledger:latest
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

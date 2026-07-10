@@ -1,0 +1,20 @@
+{;; JVM twin of bb.edn — the bot process runs here (clj-tg-bot-api is JVM-only).
+ ;; Source is identical on both runtimes: instaparse-bb (bb) and instaparse
+ ;; (JVM) expose the same instaparse.core namespace.
+ :paths ["src" "resources"]
+ :deps  {org.clojure/clojure                       {:mvn/version "1.12.1"}
+         org.babashka/cli                          {:mvn/version "0.8.61"}
+         instaparse/instaparse                     {:mvn/version "1.5.0"}
+         metosin/malli                             {:mvn/version "0.19.1"}
+         babashka/process                          {:mvn/version "0.6.23"}
+         com.github.marksto/clj-tg-bot-api         {:mvn/version "1.2.273"}
+         com.github.marksto/clj-tg-bot-api.updates {:mvn/version "1.2.273"}
+         ;; HTTP layer for clj-tg-bot-api (Martian module; pulls http-kit)
+         com.github.oliyh/martian-httpkit          {:mvn/version "0.2.3"}}
+ :aliases
+ {:bot  {:main-opts ["-m" "ledger.main"]}
+  :test {:extra-paths ["test"]
+         :extra-deps  {org.clojure/test.check                {:mvn/version "1.1.1"}
+                       io.github.cognitect-labs/test-runner
+                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
+         :main-opts   ["-m" "cognitect.test-runner"]}}}

@@ -1,0 +1,82 @@
+; ============================================================
+;  Shared household expenses — Alice & Bob (SYNTHETIC EXAMPLE)
+; ------------------------------------------------------------
+;  Per transaction, record TWO things:
+;    - who PAID  -> Assets:<Person>:Cash  (negative = money out)
+;    - WHAT for  -> Expenses:<category>
+;  Do NOT split anything by hand. The income-ratio split below
+;  is applied automatically when you run reports with --auto.
+;
+;  Settlement (who owes whom):
+;    bb ledger bal Verrechnung --auto
+;      negative = that person OWES ;  positive = that person is OWED
+; ============================================================
+
+; --- Automated cost split: Alice 60% / Bob 40% ---
+; 1) Charge every euro of shared expense to the two of them by ratio.
+= Expenses
+    (Verrechnung:Alice)    *-0.6
+    (Verrechnung:Bob)      *-0.4
+
+; 2) Credit back every euro of cash each person fronts for shared costs.
+;    (Kaution is excluded: it is Alice's own refundable asset, not a shared cost.)
+= Assets:Alice:Cash not:desc:Kaution
+    (Verrechnung:Alice)    *-1
+= Assets:Bob:Cash not:desc:Kaution
+    (Verrechnung:Bob)      *-1
+
+
+2026-06-01 Kueche Anzahlung
+  Assets:Alice:Cash
+  Expenses:Umzug:Moebel          €100
+
+2026-06-05 Kueche
+  Assets:Bob:Cash              €-2000
+  Expenses:Umzug:Moebel         €2000
+
+; Kaution: refundable deposit, Alice's own asset (NOT run through the expense split).
+2026-06-07 Kaution
+  Assets:Alice:Cash            €-3000
+  Assets:Forderungen:Kaution    €3000
+
+; Bob bears his income share of the deposit as a loan (Alice fronted it).
+; This is NOT an expense — it reverses when the deposit is refunded.
+2026-06-07 Kaution-Anteil Bob (Darlehen)
+  Verrechnung:Bob:Kaution      €-1200   ; reduces what Bob is owed
+  Verrechnung:Alice:Kaution     €1200   ; reduces what Alice owes
+
+2026-06-10 Strom
+  Assets:Bob:Cash
+  Expenses:Strom                €150
+
+2026-06-12 Transporter
+  Assets:Alice:Cash    €-160
+  Expenses:Umzug:Logistik
+
+2026-06-15 Miete
+  Assets:Alice:Cash  €-1500
+  Expenses:Miete
+
+2026-06-20
+  Assets:Alice:Cash
+  Expenses:Umzug:Waschmaschine  800€
+
+2026-06-21
+  Assets:Alice:Cash
+  Expenses:Umzug:Schluessel  50€
+  Expenses:Umzug:Essen  60€
+
+2026-06-22 Parkverbot
+  Assets:Alice:Cash
+  Expenses:Umzug:Logistik:Parkverbot  90€
+2026-06-22 Studibus
+  Assets:Alice:Cash
+  Expenses:Umzug:Logistik  120€
+
+2026-06-25  Einkauf
+  Assets:Bob:Cash
+  Expenses:Umzug:Essen  70.53€
+
+2026-07-01 Router
+  Assets:Alice:Cash
+  Expenses:Umzug:Infrastruktur    45.60€

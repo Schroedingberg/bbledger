@@ -1,0 +1,12 @@
+# /etc/systemd/system/bbledger-summary.service — one-shot, fired by the timer.
+[Unit]
+Description=bbledger summary to the Telegram group
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/bbledger.env
+ExecStart=/usr/bin/docker run --rm \
+    -e BBLEDGER_BOT_TOKEN \
+    -v /srv/bbledger/data:/data \
+    ghcr.io/schroedingberg/bbledger:latest clojure -M:bot summary

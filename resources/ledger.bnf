@@ -1,0 +1,35 @@
+(* ledger.bnf — per-line grammar; block grouping done in parse.clj.
+   Start symbols used: :header :posting :query :ruleposting *)
+
+(* transaction header: DATE optional-DESCRIPTION *)
+header      = date (<sp> description)?
+date        = #"\d{4}-\d{2}-\d{2}"
+description = #".*\S"
+
+(* a real or virtual posting, with an optional (elided) amount *)
+posting     = (virtual / real) (<sp> amount)?
+real        = account
+virtual     = <"("> account <")">
+account     = segment (<":"> segment)*
+segment     = #"[^:\s()]+"
+
+(* amounts: commodity may be prefix or suffix; sign rides the number *)
+amount      = prefixed / suffixed
+prefixed    = commodity number
+suffixed    = number commodity
+commodity   = "€"
+number      = #"-?\d+(?:\.\d+)?"
+
+(* automated-posting rule query: account / desc / not-desc terms *)
+query       = term (<sp> term)*
+term        = notdesc / desc / acct
+notdesc     = <"not:desc:"> word
+desc        = <"desc:"> word
+acct        = word
+word        = #"\S+"
+
+(* rule body line: (virtual account)  *MULTIPLIER *)
+ruleposting = virtual <sp> mult
+mult        = <"*"> number
+
+sp          = #"\s+"

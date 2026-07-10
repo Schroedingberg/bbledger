@@ -1,0 +1,21 @@
+;; bbledger bot configuration — copy to config.edn (locally) or
+;; /srv/bbledger/data/config.edn (VPS) and fill in your values.
+;; Validated at startup against the malli schema ledger.bot/Config.
+;; The bot token is NOT configured here: export BBLEDGER_BOT_TOKEN instead.
+{;; the dedicated Telegram group (negative id — post once in the group, then
+ ;; read it from https://api.telegram.org/bot<TOKEN>/getUpdates)
+ :chat-id          -100123456789
+
+ ;; absolute path to the ledger file; its directory must be a git repo,
+ ;; since the bot commits every entry
+ :ledger-file      "/data/household.ledger"
+
+ ;; telegram user-id -> person, as used in Assets:<Person>:Cash
+ :users            {111111111 "Alice"
+                    222222222 "Bob"}
+
+ ;; category for expenses recorded without a #Category token
+ :default-category ["Sonstiges"]
+
+ ;; timezone for dating entries and the summary window
+ :tz               "Europe/Berlin"}

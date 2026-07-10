@@ -1,0 +1,10 @@
+# /etc/systemd/system/bbledger-summary.timer
+[Unit]
+Description=Weekly bbledger summary (Sunday evening)
+
+[Timer]
+OnCalendar=Sun 18:00 Europe/Berlin
+Persistent=true
+
+[Install]
+WantedBy=timers.target
