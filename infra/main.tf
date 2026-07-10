@@ -59,7 +59,8 @@ variable "ghcr_user" {
 variable "ghcr_token" {
   type        = string
   sensitive   = true
-  description = "PAT with read:packages, for the VM to pull the private image"
+  default     = ""
+  description = "PAT with read:packages — only needed while the GHCR package is private"
 }
 
 resource "hcloud_ssh_key" "admin" {

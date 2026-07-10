@@ -53,7 +53,7 @@ One-time:
 | `BBLEDGER_BOT_TOKEN` | bot token from @BotFather |
 | `DATA_REPO` | SSH url, e.g. `git@github.com:Schroedingberg/bbledger-data.git` |
 | `DATA_DEPLOY_KEY` | private half of the data-repo deploy key |
-| `GHCR_PULL_TOKEN` | GitHub PAT with `read:packages` (VM pulls the image) |
+| `GHCR_PULL_TOKEN` | *(optional)* PAT with `read:packages` — only while the GHCR package is private |
 | `SSH_PUBLIC_KEY` | your ssh key, for debugging the VM (optional) |
 
 ## Deploy

@@ -42,6 +42,10 @@ runcmd:
       git -C /srv/bbledger/data config user.name bbledger-bot
       git -C /srv/bbledger/data config user.email bot@localhost
     fi
-  - echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_user}' --password-stdin
+  # only needed while the GHCR package is private
+  - |
+    if [ -n '${ghcr_token}' ]; then
+      echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_user}' --password-stdin
+    fi
   - systemctl daemon-reload
   - systemctl enable --now bbledger-bot.service bbledger-summary.timer bbledger-push.path

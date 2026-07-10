@@ -89,10 +89,9 @@ secrets inventory are in [infra/README.md](infra/README.md).
     :tz               "Europe/Berlin"}
    ```
 4. **Token**: `echo 'BBLEDGER_BOT_TOKEN=...' > /etc/bbledger.env && chmod 600 /etc/bbledger.env`
-5. **Image + units** — CI publishes the image to GHCR on every push to main
-   (private package, so log the VPS in once with a PAT that has read:packages):
+5. **Image + units** — CI publishes the (public) image to GHCR on every
+   push to main:
    ```sh
-   docker login ghcr.io -u Schroedingberg      # paste the PAT
    cp deploy/bbledger-*.{service,timer} /etc/systemd/system/
    systemctl enable --now bbledger-bot.service bbledger-summary.timer
    ```
@@ -102,3 +101,7 @@ secrets inventory are in [infra/README.md](infra/README.md).
 
 Local smoke run without Docker (JVM 21+):
 `BBLEDGER_CONFIG=... BBLEDGER_BOT_TOKEN=... clojure -M:bot`
+
+## License
+
+Eclipse Public License 2.0 — see [LICENSE](LICENSE).
