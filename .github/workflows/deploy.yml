@@ -8,6 +8,12 @@ on:
         type: choice
         options: [plan, apply, destroy]
         default: plan
+      location:
+        description: "Hetzner location (fsn1/nbg1/hel1)"
+        default: fsn1
+      server_type:
+        description: "Server type (cax11 = ARM, cx22 = x86)"
+        default: cax11
   pull_request:
     paths: ["infra/**", "deploy/**"]
 
@@ -19,6 +25,8 @@ jobs:
         working-directory: infra
     env:
       TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+      TF_VAR_location: ${{ inputs.location || 'fsn1' }}
+      TF_VAR_server_type: ${{ inputs.server_type || 'cax11' }}
       TF_VAR_bot_token: ${{ secrets.BBLEDGER_BOT_TOKEN }}
       TF_VAR_data_repo: ${{ secrets.DATA_REPO }}
       TF_VAR_data_deploy_key: ${{ secrets.DATA_DEPLOY_KEY }}
