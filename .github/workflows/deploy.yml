@@ -19,7 +19,6 @@ jobs:
         working-directory: infra
     env:
       TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
-      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
       TF_VAR_bot_token: ${{ secrets.BBLEDGER_BOT_TOKEN }}
       TF_VAR_data_repo: ${{ secrets.DATA_REPO }}
       TF_VAR_data_deploy_key: ${{ secrets.DATA_DEPLOY_KEY }}
@@ -62,7 +61,6 @@ jobs:
         run: |
           hcloud server delete bbledger-bot || true
           hcloud firewall delete bbledger-ssh-only || true
-          hcloud ssh-key delete bbledger-admin || true
       - name: Plan
         if: github.event_name == 'pull_request' || inputs.action == 'plan'
         run: tofu plan -no-color

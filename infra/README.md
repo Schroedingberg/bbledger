@@ -54,7 +54,9 @@ One-time:
 | `DATA_REPO` | SSH url, e.g. `git@github.com:Schroedingberg/bbledger-data.git` |
 | `DATA_DEPLOY_KEY` | private half of the data-repo deploy key |
 | `GHCR_PULL_TOKEN` | *(optional)* PAT with `read:packages` — only while the GHCR package is private |
-| `SSH_PUBLIC_KEY` | your ssh key, for debugging the VM (optional) |
+
+SSH access: upload your public key to the Hetzner **project** (console →
+Security → SSH keys) — every project key is installed on the server.
 
 ## Deploy
 

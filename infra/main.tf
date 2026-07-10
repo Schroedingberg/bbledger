@@ -27,10 +27,6 @@ variable "location" {
   type    = string
   default = "fsn1"
 }
-variable "ssh_public_key" {
-  type    = string
-  default = ""
-}
 variable "bot_token" {
   type      = string
   sensitive = true
@@ -55,11 +51,9 @@ variable "ghcr_token" {
   description = "PAT with read:packages — only needed while the GHCR package is private"
 }
 
-resource "hcloud_ssh_key" "admin" {
-  count      = var.ssh_public_key == "" ? 0 : 1
-  name       = "bbledger-admin"
-  public_key = var.ssh_public_key
-}
+# every SSH key already uploaded to the (dedicated) project gets installed —
+# manage keys in the Hetzner console, not here
+data "hcloud_ssh_keys" "project" {}
 
 # long-polling needs no inbound service ports; expose sshd only
 resource "hcloud_firewall" "ssh_only" {
@@ -77,7 +71,7 @@ resource "hcloud_server" "bot" {
   server_type  = var.server_type
   image        = "ubuntu-24.04"
   location     = var.location
-  ssh_keys     = hcloud_ssh_key.admin[*].id
+  ssh_keys     = data.hcloud_ssh_keys.project.ssh_keys[*].name
   firewall_ids = [hcloud_firewall.ssh_only.id]
 
   user_data = templatefile("${path.module}/cloud-init.yaml", {
