@@ -1,0 +1,43 @@
+#cloud-config
+# Provisions the bbledger bot host. The systemd units are the SAME files as
+# deploy/bbledger-*.{service,timer}, injected verbatim by templatefile().
+package_update: true
+packages:
+  - docker.io
+  - git
+
+write_files:
+  - path: /etc/bbledger.env
+    permissions: "0600"
+    content: |
+      BBLEDGER_BOT_TOKEN=${bot_token}
+  - path: /srv/bbledger/data/config.edn
+    permissions: "0644"
+    content: |
+      ${indent(6, config_edn)}
+  - path: /etc/systemd/system/bbledger-bot.service
+    content: |
+      ${indent(6, bot_unit)}
+  - path: /etc/systemd/system/bbledger-summary.service
+    content: |
+      ${indent(6, summary_unit)}
+  - path: /etc/systemd/system/bbledger-summary.timer
+    content: |
+      ${indent(6, summary_timer)}
+
+runcmd:
+  - systemctl enable --now docker
+  # data repo: the ledger + config live here; the bot commits every entry.
+  # household.ledger starts EMPTY — scp your rules/history in (see infra/README).
+  - |
+    if [ ! -d /srv/bbledger/data/.git ]; then
+      cd /srv/bbledger/data
+      git init
+      git config user.name bbledger-bot
+      git config user.email bot@localhost
+      touch household.ledger
+      git add -A && git commit -m init
+    fi
+  - echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_user}' --password-stdin
+  - systemctl daemon-reload
+  - systemctl enable --now bbledger-bot.service bbledger-summary.timer

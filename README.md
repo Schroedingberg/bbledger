@@ -48,7 +48,13 @@ business-logic API; contracts are frozen in [CONTRACT.md](CONTRACT.md).
 
 Tests run on both runtimes: `bb test` and `clojure -M:test`.
 
-## Deployment (VPS)
+## Deployment — Oracle Cloud free tier (IaC)
+
+The reproducible path: OpenTofu config in [infra/](infra/) applied by the
+`infra` GitHub Actions workflow (plan/apply/destroy). One-time Oracle account
+setup and the secrets inventory are in [infra/README.md](infra/README.md).
+
+## Deployment — any VPS (manual)
 
 1. **Bot**: create via [@BotFather](https://t.me/BotFather), keep the token.
    Make a dedicated group with the two of you + the bot. Get the group
