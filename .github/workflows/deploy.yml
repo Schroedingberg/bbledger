@@ -12,7 +12,7 @@ on:
         description: "Hetzner location (fsn1/nbg1/hel1)"
         default: fsn1
       server_type:
-        description: "Server type (cax11 = ARM, cx22 = x86)"
+        description: "Server type (cax11 = ARM, cx23 = x86)"
         default: cax11
   pull_request:
     paths: ["infra/**", "deploy/**"]
