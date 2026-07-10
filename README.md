@@ -19,13 +19,24 @@ In the dedicated group, any message starting with an amount **with decimals**
 records an expense, paid by the sender:
 
 ```
-45.60 Router                      -> Expenses:Sonstiges (default category)
-12,30 Drogerie #Haushalt:Drogerie -> Expenses:Haushalt:Drogerie
+Alice: 45.60 Router               ->  2026-07-09 Router
+                                        Assets:Alice:Cash  €-45.60
+                                        Expenses:Sonstiges  €45.60
+
+Bob: 12,30 Drogerie #Haushalt:Drogerie
+                                  ->  2026-07-09 Drogerie
+                                        Assets:Bob:Cash  €-12.30
+                                        Expenses:Haushalt:Drogerie  €12.30
+
 /bal        settlement (who owes whom)
 /summary    month-to-date by category
 /undo       revert the last recorded expense (git revert)
 /help       usage
 ```
+
+The sender is the payer: their `Assets:<Person>:Cash` account (from the
+config `:users` mapping) funds the expense, which is what the automated
+rules split by income ratio.
 
 Everything else is ignored. Malformed input never reaches the ledger: the bot
 appends a canonically rendered block, re-parses the whole file, and rolls back
