@@ -33,18 +33,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: opentofu/setup-opentofu@v1
-      - name: Init (persisted state in an S3-compatible bucket)
+      - name: Generate backend.tf (persisted state in an S3-compatible bucket)
         if: env.HAS_STATE == 'true'
         run: |
-          cat > backend.hcl <<EOF
-          bucket = "${{ secrets.STATE_BUCKET }}"
-          region = "${{ secrets.STATE_REGION }}"
-          endpoints = { s3 = "${{ secrets.STATE_ENDPOINT }}" }
+          cat > backend.tf <<EOF
+          terraform {
+            backend "s3" {
+              key                         = "bbledger/terraform.tfstate"
+              bucket                      = "${{ secrets.STATE_BUCKET }}"
+              region                      = "${{ secrets.STATE_REGION }}"
+              endpoints                   = { s3 = "${{ secrets.STATE_ENDPOINT }}" }
+              skip_region_validation      = true
+              skip_credentials_validation = true
+              skip_requesting_account_id  = true
+              skip_metadata_api_check     = true
+              skip_s3_checksum            = true
+              use_path_style              = true
+            }
+          }
           EOF
-          tofu init -backend-config=backend.hcl
-      - name: Init (stateless)
-        if: env.HAS_STATE == 'false'
-        run: tofu init -backend=false
+      - name: Init
+        run: tofu init
       - run: tofu fmt -check && tofu validate
       - uses: hetznercloud/setup-hcloud@v1
         if: env.HAS_STATE == 'false' && github.event_name == 'workflow_dispatch' && inputs.action != 'plan'

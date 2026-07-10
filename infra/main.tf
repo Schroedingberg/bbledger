@@ -5,17 +5,9 @@ terraform {
   required_providers {
     hcloud = { source = "hetznercloud/hcloud" }
   }
-  # Any S3-compatible store works for state (we use Backblaze B2's free
-  # tier). bucket/region/endpoint arrive via -backend-config at init time.
-  backend "s3" {
-    key                         = "bbledger/terraform.tfstate"
-    skip_region_validation      = true
-    skip_credentials_validation = true
-    skip_requesting_account_id  = true
-    skip_metadata_api_check     = true
-    skip_s3_checksum            = true
-    use_path_style              = true
-  }
+  # No backend block here: stateless mode (default) uses throwaway local
+  # state; with STATE_* secrets set, the workflow generates a backend.tf
+  # pointing at an S3-compatible bucket before init.
 }
 
 provider "hcloud" {
