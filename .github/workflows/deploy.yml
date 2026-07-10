@@ -26,10 +26,15 @@ jobs:
       TF_VAR_ghcr_token: ${{ secrets.GHCR_PULL_TOKEN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.STATE_ACCESS_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.STATE_SECRET_KEY }}
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      # STATE_* secrets absent -> stateless mode: the dedicated Hetzner
+      # project is the source of truth; apply wipes + recreates.
+      HAS_STATE: ${{ secrets.STATE_BUCKET != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: opentofu/setup-opentofu@v1
-      - name: Init (state in any S3-compatible bucket, e.g. Backblaze B2)
+      - name: Init (persisted state in an S3-compatible bucket)
+        if: env.HAS_STATE == 'true'
         run: |
           cat > backend.hcl <<EOF
           bucket = "${{ secrets.STATE_BUCKET }}"
@@ -37,7 +42,18 @@ jobs:
           endpoints = { s3 = "${{ secrets.STATE_ENDPOINT }}" }
           EOF
           tofu init -backend-config=backend.hcl
+      - name: Init (stateless)
+        if: env.HAS_STATE == 'false'
+        run: tofu init -backend=false
       - run: tofu fmt -check && tofu validate
+      - uses: hetznercloud/setup-hcloud@v1
+        if: env.HAS_STATE == 'false' && github.event_name == 'workflow_dispatch' && inputs.action != 'plan'
+      - name: Wipe project (stateless apply/destroy starts from empty)
+        if: env.HAS_STATE == 'false' && github.event_name == 'workflow_dispatch' && inputs.action != 'plan'
+        run: |
+          hcloud server delete bbledger-bot || true
+          hcloud firewall delete bbledger-ssh-only || true
+          hcloud ssh-key delete bbledger-admin || true
       - name: Plan
         if: github.event_name == 'pull_request' || inputs.action == 'plan'
         run: tofu plan -no-color
@@ -45,5 +61,6 @@ jobs:
         if: inputs.action == 'apply'
         run: tofu apply -auto-approve -no-color
       - name: Destroy
-        if: inputs.action == 'destroy'
+        if: inputs.action == 'destroy' && env.HAS_STATE == 'true'
         run: tofu destroy -auto-approve -no-color
+        # stateless destroy is fully handled by the wipe step above

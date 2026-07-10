@@ -23,24 +23,33 @@ One-time:
 
 ## One-time setup
 
-1. **Hetzner**: Cloud Console → your project → Security → API tokens →
+1. **Hetzner**: create a **dedicated project** (bbledger must be the only
+   thing in it — see state modes below), then Security → API tokens →
    generate a **read/write token**.
-2. **State bucket** (any S3-compatible store; Backblaze B2's free tier
-   works well): create bucket `bbledger-tfstate` (private) and an
-   application key scoped to it. Note the S3 endpoint shown with the
-   bucket, e.g. `https://s3.eu-central-003.backblazeb2.com`, whose region
-   is the middle part (`eu-central-003`).
+2. **State — two modes**, chosen by whether the `STATE_*` secrets exist:
+   - **Stateless (default)**: no bucket, no extra account. The dedicated
+     project is the source of truth: `apply` first deletes the bbledger
+     resources by name, then recreates everything (~2–3 min bot downtime,
+     new IP; fine for rarely-changing infra). `plan` always shows a full
+     create rather than a diff. Requires that nothing else ever lives in
+     the project.
+   - **Persisted**: set the `STATE_*` secrets to any S3-compatible bucket
+     (Backblaze B2's free tier works: private bucket + an application key
+     scoped to it; the endpoint shown on the bucket page, e.g.
+     `https://s3.eu-central-003.backblazeb2.com`, region = the middle part).
+     Enables real diffs and in-place updates. When switching modes, wipe
+     the project once first.
 
 ## GitHub secrets (repo → Settings → Secrets → Actions)
 
 | Secret | Value |
 |---|---|
 | `HCLOUD_TOKEN` | Hetzner Cloud API token (read/write) |
-| `STATE_BUCKET` | `bbledger-tfstate` |
-| `STATE_ENDPOINT` | e.g. `https://s3.eu-central-003.backblazeb2.com` |
-| `STATE_REGION` | e.g. `eu-central-003` |
-| `STATE_ACCESS_KEY` | application key id |
-| `STATE_SECRET_KEY` | application key secret |
+| `STATE_BUCKET` | *(optional — persisted mode)* bucket name |
+| `STATE_ENDPOINT` | *(optional)* e.g. `https://s3.eu-central-003.backblazeb2.com` |
+| `STATE_REGION` | *(optional)* e.g. `eu-central-003` |
+| `STATE_ACCESS_KEY` | *(optional)* application key id |
+| `STATE_SECRET_KEY` | *(optional)* application key secret |
 | `BBLEDGER_BOT_TOKEN` | bot token from @BotFather |
 | `DATA_REPO` | SSH url, e.g. `git@github.com:Schroedingberg/bbledger-data.git` |
 | `DATA_DEPLOY_KEY` | private half of the data-repo deploy key |
