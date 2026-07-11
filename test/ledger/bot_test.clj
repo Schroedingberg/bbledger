@@ -173,6 +173,10 @@
     (is (string? reply))
     (is (str/includes? reply "100") "month-to-date total includes the 100€ txn")))
 
+(deftest history-command-replies-with-the-raw-ledger
+  (is (= ledger-fixture
+         (:reply (bot/handle-update cfg ledger-fixture (upd 111 -100 "/history"))))))
+
 (deftest undo-and-help-commands
   (is (:undo? (bot/handle-update cfg ledger-fixture (upd 111 -100 "/undo"))))
   (is (string? (:reply (bot/handle-update cfg ledger-fixture (upd 111 -100 "/help"))))))

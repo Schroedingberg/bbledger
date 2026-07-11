@@ -234,6 +234,7 @@ Amounts are bigdec — compare with `==` in tests, never `=` (scale differs).
   ;; "/bal"      -> {:reply <settlement formatted, contains names + amount>}
   ;; "/summary"  -> {:reply <month-to-date summary from message date>}
   ;; "/undo"     -> {:undo? true}
+  ;; "/history"  -> {:reply <the raw ledger text>}
   ;; "/help"     -> {:reply <usage text>}
   ;; amount-looking text (contains \d+[.,]\d+) that doesn't trigger
   ;;             -> {:reply "⚠ …"} nudge instead of silence

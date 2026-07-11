@@ -29,6 +29,7 @@
   (str "Send \"12,30 Beschreibung #Kategorie:Sub\" to record an expense.\n"
        "Recorded messages are deleted — the ✓ reply is the record. Edits are\n"
        "ignored: to correct, /undo and send a new message.\n"
+       "/history to see all transactions (CAUTION, can be big!)\n"
        "/bal – settlement  /summary – month-to-date  /undo – revert last"))
 
 (def ^:private amount-like
@@ -81,6 +82,7 @@
                     (first (str/split text #"[@\s]")))]
           (case cmd
             "/bal"     {:reply (fmt-settlement (core/settlement (core/read-str ledger-text)))}
+            "/history" {:reply ledger-text}
             "/summary" (let [from (str (subs day 0 8) "01")]
                          {:reply (fmt-summary (core/summary (core/read-str ledger-text)
                                                             {:from from :to day})
