@@ -76,6 +76,16 @@
                 "ca. 45.60 Router"]]     ; amount not leading
     (is (nil? (bot/parse-msg text)) (pr-str text))))
 
+(deftest parse-msg-tolerates-unicode-and-leading-whitespace
+  ;; phone keyboards insert non-breaking spaces that render exactly like " "
+  (doseq [text ["35.72\u00A0Rewe #Lebensmittel:Rewe"   ; NBSP after amount
+                "35.72\u202FRewe #Lebensmittel:Rewe"   ; narrow NBSP
+                " 35.72 Rewe #Lebensmittel:Rewe"]]     ; leading space
+    (let [{:keys [amount description category]} (bot/parse-msg text)]
+      (is (== 35.72M amount) (pr-str text))
+      (is (= "Rewe" description) (pr-str text))
+      (is (= ["Lebensmittel" "Rewe"] category) (pr-str text)))))
+
 ;; --------------------------------------------------------------------------
 ;; handle-update
 ;; --------------------------------------------------------------------------

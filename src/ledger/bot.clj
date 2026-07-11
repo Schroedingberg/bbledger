@@ -32,12 +32,15 @@
 (defn parse-msg
   "\"45.60 Router #Umzug:Kueche\" -> {:amount 45.60M :description \"Router\"
    :category [\"Umzug\" \"Kueche\"]}. Strict trigger: leading amount with
-   decimals (dot or comma). Returns nil when the text doesn't trigger."
+   decimals (dot or comma). Returns nil when the text doesn't trigger.
+   Unicode spaces (NBSP & friends, which phone keyboards insert and which
+   render like \" \") are normalized before matching."
   [s]
-  (when-let [[_ amt rst] (re-matches #"(?s)(\d+[.,]\d+)\s+(.*)" s)]
-    {:amount      (bigdec (str/replace amt "," "."))
-     :description (str/trim (str/replace rst #"\s*#\S+" ""))
-     :category    (some-> (re-find #"#(\S+)" rst) second (str/split #":"))}))
+  (let [s (str/trim (str/replace s #"\p{Zs}" " "))]
+    (when-let [[_ amt rst] (re-matches #"(?s)(\d+[.,]\d+)\s+(.*)" s)]
+      {:amount      (bigdec (str/replace amt "," "."))
+       :description (str/trim (str/replace rst #"\s*#\S+" ""))
+       :category    (some-> (re-find #"#(\S+)" rst) second (str/split #":"))})))
 
 (defn- fmt-amt [amt]
   (.toPlainString (.setScale ^BigDecimal amt 2 RoundingMode/HALF_UP)))
