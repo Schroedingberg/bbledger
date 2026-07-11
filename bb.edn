@@ -2,7 +2,24 @@
  :deps  {org.babashka/cli                  {:mvn/version "0.8.61"}
          io.github.babashka/instaparse-bb {:git/sha "97ed438f22ccb34e7c3ef0d80eb46c133d4c3092"}
          metosin/malli                     {:mvn/version "0.19.1"}}
- :tasks {ledger {:doc  "Ledger reports. Try: bb ledger bal -f sample.ledger --auto"
+ :tasks {:init
+         (do (require '[clojure.string :as str])
+             (defn server-ip
+               "Bot VM IP: env BBLEDGER_SERVER, or asking Hetzner (hcloud CLI
+                with the project context selected)."
+               []
+               (or (System/getenv "BBLEDGER_SERVER")
+                   (str/trim (:out (shell {:out :string} "hcloud server ip bbledger-bot")))))
+             (defn ssh-bot!
+               "Run a command on the bot VM (key: env BBLEDGER_SSH_KEY or the
+                project default)."
+               [cmd]
+               (shell "ssh" "-i" (or (System/getenv "BBLEDGER_SSH_KEY")
+                                     (str (System/getProperty "user.home")
+                                          "/.ssh/id_bbledger-telegram-bot"))
+                      (str "root@" (server-ip)) cmd)))
+
+         ledger {:doc  "Ledger reports. Try: bb ledger bal -f sample.ledger --auto"
                  :requires ([ledger.cli])
                  :task (apply ledger.cli/-main *command-line-args*)}
          lint  {:doc  "clj-kondo over src and test (also gates bb test)"
@@ -24,4 +41,27 @@
          bench {:doc  "Timing benchmark vs hledger"
                 :extra-paths ["test"]
                 :requires ([ledger.bench])
-                :task (ledger.bench/run)}}}
+                :task (ledger.bench/run)}
+
+         server-ip {:doc  "Print the bot VM's IP"
+                    :task (println (server-ip))}
+         logs      {:doc  "Bot journal on the server; args go to journalctl (e.g. bb logs -f)"
+                    :task (ssh-bot! (str "journalctl -u bbledger-bot --no-pager "
+                                         (str/join " " (or (seq *command-line-args*) ["-n" "50"]))))}
+         restart   {:doc  "Restart the bot on the server (pulls :latest on start)"
+                    :task (ssh-bot! (str "systemctl restart bbledger-bot"
+                                         " && systemctl is-active bbledger-bot"
+                                         " && sleep 3"
+                                         " && echo running $(docker exec bbledger-bot printenv BBLEDGER_VERSION)"))}
+         deploy    {:doc  "Wait for CI + release on origin/main, then restart the bot"
+                    :task (do (shell "git fetch origin main")
+                              (let [sha (str/trim (:out (shell {:out :string} "git rev-parse origin/main")))
+                                    id  (loop [n 20]
+                                          (let [id (str/trim (:out (shell {:out :string}
+                                                                          (str "gh run list --workflow ci --commit " sha
+                                                                               " --json databaseId --jq .[0].databaseId"))))]
+                                            (cond (not (str/blank? id)) id
+                                                  (zero? n) (throw (ex-info "no CI run for origin/main — merged?" {:sha sha}))
+                                                  :else (do (Thread/sleep 3000) (recur (dec n))))))]
+                                (shell (str "gh run watch " id " --exit-status --interval 15"))
+                                (run 'restart)))}}}

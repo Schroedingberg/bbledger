@@ -14,8 +14,9 @@ on:
       server_type:
         description: "Server type (cax11 = ARM, cx23 = x86)"
         default: cax11
+  # every PR, not just infra/** — the tofu job is a required check on main,
+  # and a required check that never reports would block the merge forever
   pull_request:
-    paths: ["infra/**", "deploy/**"]
 
 jobs:
   tofu:

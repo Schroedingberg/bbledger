@@ -28,9 +28,30 @@ jobs:
       - name: Full suite (JVM parity)
         run: clojure -M:test
 
-  image:
+  # merges to main auto-release: next patch version -> versioned image ->
+  # git tag + GitHub release -> sparkly announcement in the household chat
+  version:
     needs: test
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Next patch version
+        id: ver
+        run: |
+          last=$(git tag -l 'v*' --sort=-v:refname | head -1)
+          if [ -z "$last" ]; then next=v0.1.0
+          else IFS=. read -r major minor patch <<< "${last#v}"
+               next="v$major.$minor.$((patch+1))"; fi
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+          echo "releasing $next (previous: ${last:-none})"
+
+  image:
+    needs: version
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,4 +72,30 @@ jobs:
           file: deploy/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/schroedingberg/bbledger:latest
+          build-args: |
+            VERSION=${{ needs.version.outputs.version }}
+          tags: |
+            ghcr.io/schroedingberg/bbledger:latest
+            ghcr.io/schroedingberg/bbledger:${{ needs.version.outputs.version }}
+
+  release:
+    needs: [version, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag + GitHub release
+        run: gh release create "$VERSION" --target "$GITHUB_SHA" --generate-notes
+      - name: Announce in the household chat
+        run: |
+          notes=$(gh release view "$VERSION" --json body --jq .body | head -c 3500)
+          curl -sS --fail-with-body \
+            "https://api.telegram.org/bot${{ secrets.BBLEDGER_BOT_TOKEN }}/sendMessage" \
+            --data-urlencode "chat_id=${{ secrets.BBLEDGER_CHAT_ID }}" \
+            --data-urlencode "text=🎆✨🌟 bbledger $VERSION 🌟✨🎆
+
+          $notes"

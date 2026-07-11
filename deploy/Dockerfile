@@ -12,5 +12,10 @@ RUN clojure -P -M:bot
 COPY src src
 COPY resources resources
 
+# set by CI to the release tag; "which version is running?" =
+# docker exec bbledger-bot printenv BBLEDGER_VERSION (bb restart prints it)
+ARG VERSION=dev
+ENV BBLEDGER_VERSION=$VERSION
+
 ENV BBLEDGER_CONFIG=/data/config.edn
 CMD ["clojure", "-M:bot"]
