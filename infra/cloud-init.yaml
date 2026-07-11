@@ -32,6 +32,12 @@ write_files:
   - path: /etc/systemd/system/bbledger-push.path
     content: |
       ${indent(6, push_path)}
+  - path: /etc/systemd/system/bbledger-autodeploy.service
+    content: |
+      ${indent(6, autodeploy_unit)}
+  - path: /etc/systemd/system/bbledger-autodeploy.timer
+    content: |
+      ${indent(6, autodeploy_timer)}
 
 runcmd:
   - systemctl enable --now docker
@@ -48,4 +54,4 @@ runcmd:
       echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_user}' --password-stdin
     fi
   - systemctl daemon-reload
-  - systemctl enable --now bbledger-bot.service bbledger-summary.timer bbledger-push.path
+  - systemctl enable --now bbledger-bot.service bbledger-summary.timer bbledger-push.path bbledger-autodeploy.timer

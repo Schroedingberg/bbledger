@@ -75,16 +75,18 @@ resource "hcloud_server" "bot" {
   firewall_ids = [hcloud_firewall.ssh_only.id]
 
   user_data = templatefile("${path.module}/cloud-init.yaml", {
-    bot_token       = var.bot_token
-    data_repo       = var.data_repo
-    data_deploy_key = var.data_deploy_key
-    ghcr_user       = var.ghcr_user
-    ghcr_token      = var.ghcr_token
-    bot_unit        = file("${path.module}/../deploy/bbledger-bot.service")
-    summary_unit    = file("${path.module}/../deploy/bbledger-summary.service")
-    summary_timer   = file("${path.module}/../deploy/bbledger-summary.timer")
-    push_unit       = file("${path.module}/../deploy/bbledger-push.service")
-    push_path       = file("${path.module}/../deploy/bbledger-push.path")
+    bot_token        = var.bot_token
+    data_repo        = var.data_repo
+    data_deploy_key  = var.data_deploy_key
+    ghcr_user        = var.ghcr_user
+    ghcr_token       = var.ghcr_token
+    bot_unit         = file("${path.module}/../deploy/bbledger-bot.service")
+    summary_unit     = file("${path.module}/../deploy/bbledger-summary.service")
+    summary_timer    = file("${path.module}/../deploy/bbledger-summary.timer")
+    push_unit        = file("${path.module}/../deploy/bbledger-push.service")
+    push_path        = file("${path.module}/../deploy/bbledger-push.path")
+    autodeploy_unit  = file("${path.module}/../deploy/bbledger-autodeploy.service")
+    autodeploy_timer = file("${path.module}/../deploy/bbledger-autodeploy.timer")
   })
 
   # an edited cloud-init must not silently rebuild a running VM — recreate

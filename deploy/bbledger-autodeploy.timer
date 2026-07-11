@@ -1,0 +1,10 @@
+# /etc/systemd/system/bbledger-autodeploy.timer
+[Unit]
+Description=Check for a new bbledger image every 5 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
