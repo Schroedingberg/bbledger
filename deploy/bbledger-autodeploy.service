@@ -1,0 +1,17 @@
+# /etc/systemd/system/bbledger-autodeploy.service — continuous deployment:
+# pull :latest and restart the bot only when CI has published a new image.
+# Pull-based on purpose: CI never gets credentials for the server.
+[Unit]
+Description=bbledger: restart the bot when a new image is published
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# $$ keeps systemd from eating the shell's $; a failed pull (offline, GHCR
+# down) fails the unit visibly and the timer simply tries again
+ExecStart=/bin/sh -ec '\
+    docker pull -q ghcr.io/schroedingberg/bbledger:latest >/dev/null; \
+    new=$$(docker image inspect -f "{{.Id}}" ghcr.io/schroedingberg/bbledger:latest); \
+    cur=$$(docker inspect -f "{{.Image}}" bbledger-bot 2>/dev/null || true); \
+    [ "$$new" = "$$cur" ] || systemctl restart bbledger-bot'

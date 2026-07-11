@@ -67,7 +67,9 @@ Security → SSH keys) — every project key is installed on the server.
 3. Send `12,30 Test` in the Telegram group; expect the ✓ — and the entry
    commit appearing in the data repo moments later.
 
-Redeploying app versions never touches infra: CI pushes a new image and
-`ssh root@<ip> systemctl restart bbledger-bot` picks it up (IP is in the
-apply output). `destroy` is safe for the ledger: every entry is pushed to
-the data repo, and the next `apply` resumes from the clone.
+Redeploying app versions never touches infra: merging to main releases a
+new image, and the server's `bbledger-autodeploy.timer` pulls it and
+restarts the bot within ~5 minutes (pull-based on purpose — CI holds no
+server credentials). `bb deploy` / `bb restart` cover the impatient case.
+`destroy` is safe for the ledger: every entry is pushed to the data repo,
+and the next `apply` resumes from the clone.
