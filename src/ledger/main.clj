@@ -30,7 +30,9 @@
    {:append! #(store/append! cfg %)
     :undo!   #(store/undo! cfg)
     :send!   #(tg/make-request! client :send-message
-                                {:chat-id (:chat-id cfg) :text %})})
+                                {:chat-id (:chat-id cfg) :text %})
+    :delete! #(tg/make-request! client :delete-message
+                                {:chat-id (:chat-id cfg) :message-id %})})
   false)
 
 (defn- summary-update

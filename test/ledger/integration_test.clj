@@ -34,10 +34,12 @@
 (deftest record-balance-undo-full-flow
   (let [{:keys [dir file]} (fresh-repo)
         cfg  (assoc fx/cfg :ledger-file (str file))
-        sent (atom [])
+        sent    (atom [])
+        deleted (atom [])
         fns  {:append! #(store/append! cfg %)
               :undo!   #(store/undo! cfg)
-              :send!   #(swap! sent conj %)}
+              :send!   #(swap! sent conj %)
+              :delete! #(swap! deleted conj %)}
         step (fn [from-id text]
                (bot/run-effects!
                 (bot/handle-update cfg (store/read-ledger cfg)
@@ -48,6 +50,7 @@
       (step 111 "100.00 Testkauf")
       (step 222 "50,00 Drogerie #Haushalt:Drogerie")
       (is (= 2 (count @sent)))
+      (is (= 2 (count @deleted)) "each recorded message is deleted")
       (let [{:keys [transactions]} (core/read-str (slurp file))]
         (is (= 2 (count transactions)) "the file re-parses cleanly")
         (is (= ["Testkauf" "Drogerie"] (mapv :description transactions))))

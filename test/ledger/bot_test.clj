@@ -120,10 +120,36 @@
       (is (= "Router WLAN neu" (:description record))))))
 
 (deftest invalid-expense-warns-instead-of-recording-or-throwing
-  (let [{:keys [record reply]}
+  (let [{:keys [record reply delete-msg]}
         (bot/handle-update cfg ledger-fixture (upd 111 -100 "0,00 Kaffee"))]
     (is (nil? record))
-    (is (str/starts-with? reply "⚠"))))
+    (is (str/starts-with? reply "⚠"))
+    (is (nil? delete-msg) "only recorded messages are deleted")))
+
+(deftest recorded-expense-asks-for-its-message-to-be-deleted
+  (is (= 10 (:delete-msg (bot/handle-update cfg ledger-fixture
+                                            (upd 111 -100 "45.60 Router"))))
+      "message_id from the update")
+  (is (nil? (:delete-msg (bot/handle-update cfg ledger-fixture (upd 111 -100 "/bal"))))
+      "command messages are kept"))
+
+(deftest amount-looking-text-fails-loud-instead-of-silent
+  (doseq [text ["35.72€ Rewe"            ; currency glued to the amount
+                "Rewe hat 35.72 gekostet"]] ; amount not leading
+    (let [{:keys [record reply]} (bot/handle-update cfg ledger-fixture (upd 111 -100 text))]
+      (is (nil? record) (pr-str text))
+      (is (str/starts-with? reply "⚠") (pr-str text)))))
+
+(deftest edited-messages-never-record-but-nudge-when-expense-like
+  (let [edit (fn [text] {:update_id 2
+                         :edited_message (assoc (:message (upd 111 -100 text))
+                                                :edit_date 1783602100)})]
+    (let [{:keys [record reply]} (bot/handle-update cfg ledger-fixture
+                                                    (edit "45.60 Router"))]
+      (is (nil? record))
+      (is (str/includes? reply "edits are ignored")))
+    (is (nil? (bot/handle-update cfg ledger-fixture (edit "ok bin gleich da")))
+        "edited chatter stays silent")))
 
 (deftest ignores-wrong-chat-unknown-sender-and-chatter
   (is (nil? (bot/handle-update cfg ledger-fixture (upd 111 -999 "45.60 Router")))
@@ -158,12 +184,31 @@
   (let [calls (atom [])]
     [calls {:append! #(swap! calls conj [:append %])
             :undo!   (fn [] (swap! calls conj [:undo]) "Drogerie")
-            :send!   #(swap! calls conj [:send %])}]))
+            :send!   #(swap! calls conj [:send %])
+            :delete! #(swap! calls conj [:delete %])}]))
 
 (deftest run-effects-record-then-reply
   (let [[calls fns] (recorder)]
     (bot/run-effects! {:record ::txn :reply "ok"} fns)
     (is (= [[:append ::txn] [:send "ok"]] @calls))))
+
+(deftest run-effects-deletes-original-only-after-successful-record
+  (let [[calls fns] (recorder)]
+    (bot/run-effects! {:record ::txn :reply "ok" :delete-msg 10} fns)
+    (is (= [[:append ::txn] [:send "ok"] [:delete 10]] @calls)))
+  (testing "no delete when the append fails"
+    (let [[calls fns] (recorder)]
+      (bot/run-effects! {:record ::txn :reply "ok" :delete-msg 10}
+                        (assoc fns :append! (fn [_] (throw (ex-info "invalid" {})))))
+      (is (empty? (filter #(= :delete (first %)) @calls))))))
+
+(deftest run-effects-delete-failure-warns-but-keeps-the-record
+  (let [[calls fns] (recorder)]
+    (bot/run-effects! {:record ::txn :reply "ok" :delete-msg 10}
+                      (assoc fns :delete! (fn [_] (throw (ex-info "not admin" {})))))
+    (is (= [:append ::txn] (first @calls)))
+    (is (some #(and (= :send (first %)) (str/includes? (second %) "admin")) @calls)
+        "warns that the bot needs delete rights")))
 
 (deftest run-effects-append-failure-sends-warning-instead
   (let [sent (atom [])]

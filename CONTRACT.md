@@ -226,20 +226,29 @@ Amounts are bigdec — compare with `==` in tests, never `=` (scale differs).
 
 (handle-update [config ledger-text update])  ; -> effect description:
   ;; expense msg from known user in the right chat:
-  ;;   {:record <txn from core/expense> :reply "✓ …"}
+  ;;   {:record <txn from core/expense> :reply "✓ …" :delete-msg <message_id>}
   ;;     txn :date = message :date unix ts converted in config :tz
   ;;     payer = (users (:id from)); category defaults to :default-category
+  ;;     :delete-msg = the sender's message; deleting it (after the record
+  ;;     succeeded) communicates that the ✓ reply, not the message, is the record
   ;; "/bal"      -> {:reply <settlement formatted, contains names + amount>}
   ;; "/summary"  -> {:reply <month-to-date summary from message date>}
   ;; "/undo"     -> {:undo? true}
   ;; "/help"     -> {:reply <usage text>}
-  ;; wrong chat-id, unknown sender, or non-triggering text -> nil
+  ;; amount-looking text (contains \d+[.,]\d+) that doesn't trigger
+  ;;             -> {:reply "⚠ …"} nudge instead of silence
+  ;; :edited_message updates NEVER record (double-booking risk); expense-looking
+  ;;   edit -> {:reply "⚠ …"} nudge, anything else -> nil
+  ;; wrong chat-id, unknown sender, or non-expense-looking chatter -> nil
 
-(run-effects! [effect {:keys [append! undo! send!]}])
+(run-effects! [effect {:keys [append! undo! send! delete!]}])
   ;; the ONLY impure-ish fn here; side effects injected:
   ;;   append! : txn -> nil (throws on invalid)   undo! : () -> desc | nil
-  ;;   send!   : text -> nil
-  ;; {:record t :reply r} -> (append! t) then (send! r); on throw send "⚠ …"
+  ;;   send!   : text -> nil                      delete! : message-id -> nil
+  ;; {:record t :reply r :delete-msg id}
+  ;;   -> (append! t), (send! r), then (delete! id); on append/send throw send
+  ;;      "⚠ …" and skip the delete; on delete throw warn via send! (the record
+  ;;      stands — delete needs the bot to be a group admin with delete rights)
   ;; {:reply r}           -> (send! r)
   ;; {:undo? true}        -> (undo!) -> desc: send "↩ … <desc>", nil: "nothing to undo"
   ;; nil                  -> no-op
