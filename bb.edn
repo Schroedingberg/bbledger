@@ -5,11 +5,17 @@
  :tasks {:init
          (do (require '[clojure.string :as str])
              (defn server-ip
-               "Bot VM IP: env BBLEDGER_SERVER, or asking Hetzner (hcloud CLI
-                with the project context selected)."
+               "Bot VM IP: env BBLEDGER_SERVER, or asking Hetzner (hcloud CLI;
+                honors HCLOUD_CONTEXT when several contexts exist)."
                []
                (or (System/getenv "BBLEDGER_SERVER")
-                   (str/trim (:out (shell {:out :string} "hcloud server ip bbledger-bot")))))
+                   (let [{:keys [exit out]} (shell {:out :string :err :string :continue true}
+                                                   "hcloud server ip bbledger-bot")]
+                     (when (zero? exit) (str/trim out)))
+                   (throw (ex-info (str "no hcloud context — one-time setup: "
+                                        "`hcloud context create bbledger` (paste the "
+                                        "Hetzner API token), or set BBLEDGER_SERVER=<ip>")
+                                   {}))))
              (defn ssh-bot!
                "Run a command on the bot VM (key: env BBLEDGER_SSH_KEY or the
                 project default)."
