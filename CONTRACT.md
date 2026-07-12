@@ -217,12 +217,14 @@ Amounts are bigdec — compare with `==` in tests, never `=` (scale differs).
 ## Namespace `ledger.bot` (Agent B) — pure
 
 ```clojure
-(parse-msg [s])   ; strict trigger: text starts with amount WITH decimals
-                  ; (dot or comma): "45.60 Router" | "12,30 Drogerie" ->
-                  ;   {:amount 45.60M :description "Router" :category nil}
+(parse-msg [s])   ; strict trigger: text starts with an amount that has decimals
+                  ; (dot or comma) OR a € on either side (€ makes integers ok):
+                  ; "45.60 Router" | "12,30 Drogerie" | "50€ Pizza" | "€ 50,50 X"
+                  ;   -> {:amount 45.60M :description "Router" :category nil}
                   ; "#Cat:Sub" token anywhere -> :category ["Cat" "Sub"], removed
-                  ;   from description
-                  ; no trigger ("2 Minuten bin ich da", "hallo", "/bal") -> nil
+                  ;   from description; € never leaks into the description
+                  ; no trigger ("2 Minuten bin ich da", "50 Pizza", "hallo",
+                  ;   "/bal") -> nil
 
 (handle-update [config ledger-text update])  ; -> effect description:
   ;; expense msg from known user in the right chat:
@@ -236,7 +238,8 @@ Amounts are bigdec — compare with `==` in tests, never `=` (scale differs).
   ;; "/undo"     -> {:undo? true}
   ;; "/history"  -> {:reply <the raw ledger text>}
   ;; "/help"     -> {:reply <usage text>}
-  ;; amount-looking text (contains \d+[.,]\d+) that doesn't trigger
+  ;; expense-intent text that doesn't trigger (decimal amount anywhere, or
+  ;;   text opening with a number — incl. "50 Pizza", "2 Minuten bin ich da")
   ;;             -> {:reply "⚠ …"} nudge instead of silence
   ;; :edited_message updates NEVER record (double-booking risk); expense-looking
   ;;   edit -> {:reply "⚠ …"} nudge, anything else -> nil

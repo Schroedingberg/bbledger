@@ -26,25 +26,36 @@
   (some-> (m/explain Config cfg) me/humanize))
 
 (def ^:private help-text
-  (str "Send \"12,30 Beschreibung #Kategorie:Sub\" to record an expense.\n"
+  (str "Send \"12,30 Beschreibung #Kategorie:Sub\" (or \"50€ Pizza\") to record an expense.\n"
        "Recorded messages are deleted — the ✓ reply is the record. Edits are\n"
        "ignored: to correct, /undo and send a new message.\n"
        "/history to see all transactions (CAUTION, can be big!)\n"
        "/bal – settlement  /summary – month-to-date  /undo – revert last"))
 
-(def ^:private amount-like
-  "Loose \"was that meant as an expense?\" detector for loud failures."
-  #"\d+[.,]\d+")
+(defn- expense-intent?
+  "Loose \"was that meant as an expense?\" detector for loud failures:
+   a decimal amount anywhere, or text opening with a number."
+  [text]
+  (or (re-find #"\d+[.,]\d+" text)
+      (re-matches #"(?s)\s*€?\s*\d+\s.*" text)))
+
+(def ^:private nudge-text
+  (str "⚠ not recorded — start with the amount, with decimals or €: "
+       "\"12,30 Essen #Kategorie:Sub\" or \"50€ Pizza\""))
 
 (defn parse-msg
   "\"45.60 Router #Umzug:Kueche\" -> {:amount 45.60M :description \"Router\"
    :category [\"Umzug\" \"Kueche\"]}. Strict trigger: leading amount with
-   decimals (dot or comma). Returns nil when the text doesn't trigger.
+   decimals (dot or comma) or with a € on either side (\"50€ Pizza\",
+   \"€50 Pizza\") — a bare integer (\"2 Minuten bin ich da\") never records.
    Unicode spaces (NBSP & friends, which phone keyboards insert and which
    render like \" \") are normalized before matching."
   [s]
   (let [s (str/trim (str/replace s #"\p{Zs}" " "))]
-    (when-let [[_ amt rst] (re-matches #"(?s)(\d+[.,]\d+)\s+(.*)" s)]
+    (when-let [[_ amt rst]
+               (or (re-matches #"(?s)(\d+[.,]\d+)\s*€?\s+(.*)" s)     ; 12,30 / 45.60€
+                   (re-matches #"(?s)€\s*(\d+(?:[.,]\d+)?)\s+(.*)" s) ; €50 / €12,30
+                   (re-matches #"(?s)(\d+)\s*€\s+(.*)" s))]           ; 50€ / 50 €
       {:amount      (bigdec (str/replace amt "," "."))
        :description (str/trim (str/replace rst #"\s*#\S+" ""))
        :category    (some-> (re-find #"#(\S+)" rst) second (str/split #":"))})))
@@ -74,7 +85,7 @@
         payer (get users sender)]
     (when (and (= chat-id chat) payer text)
       (if edited?
-        (when (re-find amount-like text)
+        (when (expense-intent? text)
           {:reply "⚠ edits are ignored — send the expense as a new message"})
         (let [day (str (.toLocalDate (.atZone (Instant/ofEpochSecond date)
                                               (ZoneId/of tz))))
@@ -104,9 +115,8 @@
                    :delete-msg message_id}
                   (catch clojure.lang.ExceptionInfo _
                     {:reply (str "⚠ not recorded: " text)})))
-              (when (re-find amount-like text)
-                {:reply (str "⚠ not recorded — expenses start with the amount: "
-                             "\"12,30 Beschreibung #Kategorie:Sub\"")}))))))))
+              (when (expense-intent? text)
+                {:reply nudge-text}))))))))
 
 (defn run-effects!
   "Execute an effect description via injected side-effecting fns
