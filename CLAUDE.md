@@ -44,9 +44,12 @@ and `ledger.report` (balance inference, auto-posting rules, rendering) are inter
 
 The bot pipeline: `ledger.main` (JVM wiring: clj-tg-bot-api long-polling, strictly sequential
 single consumer) → `ledger.bot/handle-update` (pure: raw snake_case Telegram update map in,
-**effect description** out: `{:record txn :reply s}` / `{:reply s}` / `{:undo? true}` / nil) →
-`ledger.bot/run-effects!` executes effects via injected fns (`:append!` `:undo!` `:send!`),
-which is why the whole pipeline is testable under bb with no network.
+**effect description** out: `{:record txn :reply s}` / `{:reply s}` / `{:undo? true}` / nil;
+`:reply` may be a seq of ≤4096-char chunks, one `send!` each) → `ledger.bot/run-effects!`
+validates the effect against the closed `Effect` schema, then executes it via injected fns
+(`:append!` `:undo!` `:send!` `:delete!`), which is why the whole pipeline is testable under
+bb with no network. Every branch is contained: injected-fn failures log to stderr and never
+escape into the polling loop, and "⚠ not recorded" is sent only when `append!` itself failed.
 
 Persistence (`ledger.store`): **the ledger file is the database.** `append!` renders the txn
 canonically (`core/txn->str`), appends, re-parses the WHOLE file to validate (restoring the
@@ -90,3 +93,29 @@ repo; every entry is pushed back to it. Server SSH keys come from the Hetzner pr
 (`hcloud_ssh_keys` data source), not from variables — Hetzner rejects duplicate key material.
 
 Secrets inventory and provisioning runbook: `infra/README.md`.
+
+## Security posture (OWASP review 2026-07-10, re-scan 2026-07-11, fixes 2026-07-12)
+
+Review docs: `.claude/security-rescan-2026-07-11.md` (supersedes the 2026-07-10 baseline) and
+`.claude/test-suite-adequacy-2026-07-12.md`. All Medium/Low findings (M1–M4, L1–L6) and test-gap
+items (P1–P7) are implemented:
+
+- Containers blocked from the metadata endpoint (`deploy/bbledger-firewall.service`, M1).
+- Workflow actions SHA-pinned, secrets step-scoped, PR runs of `deploy.yml` secret-free (M2).
+- Images cosign-signed in CI (keyless, GitHub OIDC); autodeploy verifies the signature AND
+  health-checks the new image (`clojure -M:bot check` = config + getMe) before restarting —
+  a bad image leaves the old bot running (M3, P6).
+- `/history` chunked below Telegram's 4096-char cap (M4); category segments schema-constrained
+  against `;` smuggling (L1); GitHub SSH host keys pinned, no TOFU (L2).
+- Container runs as non-root uid 1000 with `--cap-drop=ALL --security-opt=no-new-privileges`;
+  cloud-init chowns `/srv/bbledger/data` to match — change one, change both (L3).
+- All `run-effects!` branches contained; closed `Effect` schema makes effect-key typos loud;
+  "⚠ not recorded" only when `append!` actually failed (L4, L6, P2).
+- CI loads `ledger.main` and smoke-runs the built image (P1, P3); real getUpdates wire fixture
+  in `test/ledger/fixtures/updates.json` (P7).
+
+Accepted residuals (info-level, revisit when touching the area): SSH open to 0.0.0.0/0;
+rejected senders not logged (would detect a leaked token being probed); `main.clj` slurps the
+ledger before the allowlist check; the FIRST boot of a fresh VM pulls `:latest` unverified
+(the cosign gate covers the autodeploy path only); the release announce curl exposes the token
+in runner-local argv.
