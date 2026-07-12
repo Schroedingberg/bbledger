@@ -69,8 +69,25 @@
       (is (= ["Umzug" "Infrastruktur"] category))
       (is (= "Router" description)))))
 
+(deftest parse-msg-accepts-currency-symbol
+  ;; € on either side makes the intent unambiguous, so integers work too
+  (doseq [[text amount] [["50€ Pizza"       50M]
+                         ["50 € Pizza"      50M]
+                         ["€50 Pizza"       50M]
+                         ["€ 50,50 Pizza"   50.50M]
+                         ["50.00€ Rewe"     50.00M]   ; decimals + currency
+                         ["50.00 € Rewe"    50.00M]
+                         ["€12,30 Drogerie" 12.30M]
+                         ["12,30€ Drogerie" 12.30M]]]
+    (let [parsed (bot/parse-msg text)]
+      (is (some? parsed) (pr-str text))
+      (is (== amount (:amount parsed)) (pr-str text))
+      (is (not (str/includes? (:description parsed) "€"))
+          (str "€ must not leak into the description: " (pr-str text))))))
+
 (deftest parse-msg-rejects-non-triggers
-  (doseq [text ["2 Minuten bin ich da"   ; amount without decimals
+  (doseq [text ["2 Minuten bin ich da"   ; bare integer, no €
+                "50 Pizza"               ; bare integer, no €
                 "hallo"
                 "/bal"
                 "ca. 45.60 Router"]]     ; amount not leading
@@ -134,11 +151,14 @@
       "command messages are kept"))
 
 (deftest amount-looking-text-fails-loud-instead-of-silent
-  (doseq [text ["35.72€ Rewe"            ; currency glued to the amount
+  (doseq [text ["50 Pizza"                  ; bare integer — needs decimals or €
+                "2 Minuten bin ich da"      ; same shape — accepted nudge tradeoff
                 "Rewe hat 35.72 gekostet"]] ; amount not leading
     (let [{:keys [record reply]} (bot/handle-update cfg ledger-fixture (upd 111 -100 text))]
       (is (nil? record) (pr-str text))
-      (is (str/starts-with? reply "⚠") (pr-str text)))))
+      (is (str/starts-with? reply "⚠") (pr-str text))))
+  (testing "currency glued to the amount now records instead of nudging"
+    (is (some? (:record (bot/handle-update cfg ledger-fixture (upd 111 -100 "35.72€ Rewe")))))))
 
 (deftest edited-messages-never-record-but-nudge-when-expense-like
   (let [edit (fn [text] {:update_id 2
@@ -156,8 +176,8 @@
       "wrong chat")
   (is (nil? (bot/handle-update cfg ledger-fixture (upd 333 -100 "45.60 Router")))
       "unknown sender")
-  (is (nil? (bot/handle-update cfg ledger-fixture (upd 111 -100 "2 Minuten bin ich da")))
-      "no trigger"))
+  (is (nil? (bot/handle-update cfg ledger-fixture (upd 111 -100 "hallo")))
+      "chatter without numbers stays silent"))
 
 (deftest bal-command-replies-with-settlement
   (doseq [text ["/bal" "/bal@bbledger_bot"]]   ; group chats append @botname
