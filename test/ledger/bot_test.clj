@@ -1,7 +1,7 @@
 (ns ledger.bot-test
   "Failing-first spec for the pure bot layer (CONTRACT.md Phase 2)."
   (:require [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]]
+            [clojure.test :refer [are deftest is testing]]
             [ledger.bot :as bot]))
 
 (def cfg
@@ -71,27 +71,29 @@
 
 (deftest parse-msg-accepts-currency-symbol
   ;; € on either side makes the intent unambiguous, so integers work too
-  (doseq [[text amount] [["50€ Pizza"       50M]
-                         ["50 € Pizza"      50M]
-                         ["€50 Pizza"       50M]
-                         ["€ 50,50 Pizza"   50.50M]
-                         ["50.00€ Rewe"     50.00M]   ; decimals + currency
-                         ["50.00 € Rewe"    50.00M]
-                         ["€12,30 Drogerie" 12.30M]
-                         ["12,30€ Drogerie" 12.30M]]]
-    (let [parsed (bot/parse-msg text)]
-      (is (some? parsed) (pr-str text))
-      (is (== amount (:amount parsed)) (pr-str text))
-      (is (not (str/includes? (:description parsed) "€"))
-          (str "€ must not leak into the description: " (pr-str text))))))
+  (testing "amount parses with € before/after, spaced or glued"
+    (are [text amount] (== amount (:amount (bot/parse-msg text)))
+      "50€ Pizza"       50M
+      "50 € Pizza"      50M
+      "€50 Pizza"       50M
+      "€ 50,50 Pizza"   50.50M
+      "50.00€ Rewe"     50.00M   ; decimals + currency
+      "50.00 € Rewe"    50.00M
+      "€12,30 Drogerie" 12.30M
+      "12,30€ Drogerie" 12.30M))
+  (testing "€ never leaks into the description"
+    (are [text] (= "Rewe" (:description (bot/parse-msg text)))
+      "50.00€ Rewe"
+      "€50 Rewe"
+      "50 € Rewe")))
 
 (deftest parse-msg-rejects-non-triggers
-  (doseq [text ["2 Minuten bin ich da"   ; bare integer, no €
-                "50 Pizza"               ; bare integer, no €
-                "hallo"
-                "/bal"
-                "ca. 45.60 Router"]]     ; amount not leading
-    (is (nil? (bot/parse-msg text)) (pr-str text))))
+  (are [text] (nil? (bot/parse-msg text))
+    "2 Minuten bin ich da"   ; bare integer, no €
+    "50 Pizza"               ; bare integer, no €
+    "hallo"
+    "/bal"
+    "ca. 45.60 Router"))     ; amount not leading
 
 (deftest parse-msg-tolerates-unicode-and-leading-whitespace
   ;; phone keyboards insert non-breaking spaces that render exactly like " "
@@ -151,12 +153,12 @@
       "command messages are kept"))
 
 (deftest amount-looking-text-fails-loud-instead-of-silent
-  (doseq [text ["50 Pizza"                  ; bare integer — needs decimals or €
-                "2 Minuten bin ich da"      ; same shape — accepted nudge tradeoff
-                "Rewe hat 35.72 gekostet"]] ; amount not leading
-    (let [{:keys [record reply]} (bot/handle-update cfg ledger-fixture (upd 111 -100 text))]
-      (is (nil? record) (pr-str text))
-      (is (str/starts-with? reply "⚠") (pr-str text))))
+  (are [text] (let [{:keys [record reply]}
+                    (bot/handle-update cfg ledger-fixture (upd 111 -100 text))]
+                (and (nil? record) (str/starts-with? reply "⚠")))
+    "50 Pizza"                 ; bare integer — needs decimals or €
+    "2 Minuten bin ich da"     ; same shape — accepted nudge tradeoff
+    "Rewe hat 35.72 gekostet") ; amount not leading
   (testing "currency glued to the amount now records instead of nudging"
     (is (some? (:record (bot/handle-update cfg ledger-fixture (upd 111 -100 "35.72€ Rewe")))))))
 
