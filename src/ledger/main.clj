@@ -49,13 +49,20 @@
 (defn -main
   "No args: run the bot (config path from env BBLEDGER_CONFIG, default
    \"config.edn\"; token from env BBLEDGER_BOT_TOKEN). Arg \"summary\":
-   send a one-shot month-to-date summary to the group and exit."
+   send a one-shot month-to-date summary to the group and exit. Arg
+   \"check\": health probe for deploy gating — validate config + token via
+   getMe (doesn't disturb a polling bot), exit 0 ok / 1 broken."
   [& args]
   (let [cfg    (load-config)
         client (->client)]
-    (if (= "summary" (first args))
-      (do (process-update! cfg client (summary-update cfg))
-          (System/exit 0))
+    (case (first args)
+      "summary" (do (process-update! cfg client (summary-update cfg))
+                    (System/exit 0))
+      "check"   (System/exit (try (tg/make-request! client :get-me) 0
+                                  (catch Exception e
+                                    (binding [*out* *err*]
+                                      (println "check failed:" (ex-message e)))
+                                    1)))
       (do ;; single consumer thread => updates are handled strictly sequentially
         (tg-updates/setup-long-polling!
          {:long-polling {:update-handler #(process-update! cfg client %)}}

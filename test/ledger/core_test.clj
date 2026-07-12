@@ -65,7 +65,13 @@
                  ;; ";" starts a comment in the ledger format, newlines break
                  ;; the block — a desc containing them cannot round-trip
                  (assoc valid :description "Drogerie; Shampoo")
-                 (assoc valid :description "Router\nWLAN")]]
+                 (assoc valid :description "Router\nWLAN")
+                 ;; category segments join into an account name — ";", ":",
+                 ;; parens and whitespace would silently corrupt the posting
+                 (assoc valid :category ["Evil;Cat"])
+                 (assoc valid :category ["A:B"])
+                 (assoc valid :category ["A B"])
+                 (assoc valid :category ["(A)"])]]
       (is (thrown? clojure.lang.ExceptionInfo (core/expense bad))
           (pr-str bad)))))
 

@@ -19,7 +19,9 @@
    [:date [:re #"^\d{4}-\d{2}-\d{2}$"]]
    [:payer [:fn {:error/message "should be a non-blank string"}
             (every-pred string? (complement str/blank?))]]
-   [:category [:vector {:min 1} :string]]
+   ;; category segments join into an account name: ";" starts a comment,
+   ;; ":" splits segments, whitespace/parens break the posting line
+   [:category [:vector {:min 1} [:re #"^[^;\r\n:()\s]+$"]]]
    [:amount [:fn {:error/message "should be a positive decimal"}
              (every-pred decimal? pos?)]]
    ;; ";" starts a comment in the ledger format and newlines end the header

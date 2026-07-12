@@ -236,7 +236,9 @@ Amounts are bigdec — compare with `==` in tests, never `=` (scale differs).
   ;; "/bal"      -> {:reply <settlement formatted, contains names + amount>}
   ;; "/summary"  -> {:reply <month-to-date summary from message date>}
   ;; "/undo"     -> {:undo? true}
-  ;; "/history"  -> {:reply <the raw ledger text>}
+  ;; "/history"  -> {:reply [<raw ledger text, chunked at line boundaries>]}
+  ;;     (:reply is a string OR a seq of strings; each string must fit one
+  ;;      Telegram message — sendMessage caps at 4096 chars)
   ;; "/help"     -> {:reply <usage text>}
   ;; expense-intent text that doesn't trigger (decimal amount anywhere, or
   ;;   text opening with a number — incl. "50 Pizza", "2 Minuten bin ich da")
@@ -253,7 +255,7 @@ Amounts are bigdec — compare with `==` in tests, never `=` (scale differs).
   ;;   -> (append! t), (send! r), then (delete! id); on append/send throw send
   ;;      "⚠ …" and skip the delete; on delete throw warn via send! (the record
   ;;      stands — delete needs the bot to be a group admin with delete rights)
-  ;; {:reply r}           -> (send! r)
+  ;; {:reply r}           -> (send! r); seq of strings -> one send! per chunk
   ;; {:undo? true}        -> (undo!) -> desc: send "↩ … <desc>", nil: "nothing to undo"
   ;; nil                  -> no-op
 ```

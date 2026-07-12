@@ -25,6 +25,15 @@
   [cfg]
   (some-> (m/explain Config cfg) me/humanize))
 
+(def Effect
+  "Shape of a non-nil handle-update result. Closed, so a key typo (:replly)
+   fails loudly in run-effects! instead of being silently ignored."
+  [:map {:closed true}
+   [:record {:optional true} :some]  ; txn shape is store/append!'s concern
+   [:reply {:optional true} [:or :string [:sequential :string]]]
+   [:undo? {:optional true} :boolean]
+   [:delete-msg {:optional true} :int]])
+
 (def ^:private help-text
   (str "Send \"12,30 Beschreibung #Kategorie:Sub\" (or \"50€ Pizza\") to record an expense.\n"
        "Recorded messages are deleted — the ✓ reply is the record. Edits are\n"
@@ -60,6 +69,19 @@
        :description (str/trim (str/replace rst #"\s*#\S+" ""))
        :category    (some-> (re-find #"#(\S+)" rst) second (str/split #":"))})))
 
+(defn- chunk-lines
+  "Split s at line boundaries into chunks under 3500 chars, so each fits one
+   Telegram message (sendMessage caps at 4096). Rejoining with \\n restores s
+   (minus a trailing newline)."
+  [s]
+  (reduce (fn [chunks line]
+            (let [cur (peek chunks)]
+              (if (and cur (< (+ (count cur) 1 (count line)) 3500))
+                (conj (pop chunks) (str cur "\n" line))
+                (conj chunks line))))
+          []
+          (str/split-lines s)))
+
 (defn- fmt-amt [amt]
   (.toPlainString (.setScale ^BigDecimal amt 2 RoundingMode/HALF_UP)))
 
@@ -75,7 +97,8 @@
 
 (defn handle-update
   "Telegram update map (wire shape, snake_case keywords) -> effect description
-   ({:record txn :reply s :delete-msg id} | {:reply s} | {:undo? true} | nil).
+   ({:record txn :reply s :delete-msg id} | {:reply s-or-seq} | {:undo? true}
+   | nil); see schema Effect. /history pre-chunks its reply into a seq.
    Amount-looking text that doesn't parse gets a ⚠ nudge instead of silence;
    so do edits of amount-looking messages (edits never record)."
   [{:keys [chat-id users default-category tz]} ledger-text update]
@@ -93,7 +116,7 @@
                     (first (str/split text #"[@\s]")))]
           (case cmd
             "/bal"     {:reply (fmt-settlement (core/settlement (core/read-str ledger-text)))}
-            "/history" {:reply ledger-text}
+            "/history" {:reply (chunk-lines ledger-text)}
             "/summary" (let [from (str (subs day 0 8) "01")]
                          {:reply (fmt-summary (core/summary (core/read-str ledger-text)
                                                             {:from from :to day})
@@ -118,24 +141,48 @@
               (when (expense-intent? text)
                 {:reply nudge-text}))))))))
 
+(defn- warn!
+  "Last-resort failure logging to stderr. Deliberately never send!s — a send!
+   that throws while Telegram is down must not escape into the polling loop."
+  [context e]
+  (binding [*out* *err*]
+    (println "⚠ bbledger:" context "—" (ex-message e))))
+
 (defn run-effects!
   "Execute an effect description via injected side-effecting fns
    {:append! (fn [txn]) :undo! (fn []) :send! (fn [text]) :delete! (fn [msg-id])}.
-   :delete-msg is honored only after a successful record; a delete failure
-   (e.g. bot lacks admin rights) warns but never fails the record."
-  [{:keys [record reply undo? delete-msg]} {:keys [append! undo! send! delete!]}]
-  (cond
-    record (try (append! record)
-                (send! reply)
-                (when delete-msg
-                  (try (delete! delete-msg)
-                       (catch Exception _
-                         (send! (str "⚠ recorded, but couldn't delete your message"
-                                     " — make me an admin with 'delete messages'")))))
-                (catch Exception e
-                  (send! (str "⚠ not recorded: " (ex-message e)))))
-    undo?  (send! (if-let [desc (undo!)]
-                    (str "↩ removed " desc)
-                    "nothing to undo"))
-    reply  (send! reply))
+   Throws on an effect with unknown keys (schema Effect). A :reply seq is sent
+   as one message per chunk. :delete-msg is honored only after a successful
+   record; a delete failure (e.g. bot lacks admin rights) warns but never fails
+   the record. Only an append! failure may claim \"not recorded\" — once
+   append! returned, later failures are logged, never sent as ⚠. No injected
+   fn's exception escapes to the caller."
+  [{:keys [record reply undo? delete-msg] :as effect}
+   {:keys [append! undo! send! delete!] :as fns}]
+  (assert (every? fns [:append! :undo! :send! :delete!]) "run-effects! injected fn missing")
+  (when-let [errors (some->> effect (m/explain Effect) me/humanize)]
+    (throw (ex-info (str "invalid effect: " errors) {:effect effect})))
+  (letfn [(send-warned! [text context]
+            (try (send! text)
+                 (catch Exception e (warn! context e))))]
+    (cond
+      record (if-not (try (append! record) true
+                          (catch Exception e
+                            (send-warned! (str "⚠ not recorded: " (ex-message e))
+                                          "failure reply undeliverable")
+                            false))
+               nil ; not recorded, ⚠ sent (or logged) — nothing to confirm/delete
+               (do (send-warned! reply "recorded, but ✓ confirmation undeliverable")
+                   (when delete-msg
+                     (try (delete! delete-msg)
+                          (catch Exception _
+                            (send-warned! (str "⚠ recorded, but couldn't delete your message"
+                                               " — make me an admin with 'delete messages'")
+                                          "delete warning undeliverable"))))))
+      undo?  (try (send! (if-let [desc (undo!)]
+                           (str "↩ removed " desc)
+                           "nothing to undo"))
+                  (catch Exception e (warn! "undo failed" e)))
+      reply  (try (run! send! (if (string? reply) [reply] reply))
+                  (catch Exception e (warn! "reply failed" e)))))
   nil)

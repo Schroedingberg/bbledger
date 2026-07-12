@@ -1,6 +1,8 @@
 (ns ledger.bot-test
   "Failing-first spec for the pure bot layer (CONTRACT.md Phase 2)."
-  (:require [clojure.string :as str]
+  (:require [cheshire.core :as json]
+            [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.test :refer [are deftest is testing]]
             [ledger.bot :as bot]))
 
@@ -138,6 +140,15 @@
           (bot/handle-update cfg ledger-fixture (upd 111 -100 "45.60 Router\nWLAN neu"))]
       (is (= "Router WLAN neu" (:description record))))))
 
+(deftest category-cannot-smuggle-ledger-syntax
+  ;; ";" in a category segment would commit but truncate on re-parse (the
+  ;; documented ";" invariant); the Expense schema rejects it -> ⚠, no record
+  (are [text] (let [{:keys [record reply]}
+                    (bot/handle-update cfg ledger-fixture (upd 111 -100 text))]
+                (and (nil? record) (str/starts-with? reply "⚠")))
+    "12,30 x #A;B"
+    "12,30 x #A:B(C"))
+
 (deftest invalid-expense-warns-instead-of-recording-or-throwing
   (let [{:keys [record reply delete-msg]}
         (bot/handle-update cfg ledger-fixture (upd 111 -100 "0,00 Kaffee"))]
@@ -195,9 +206,17 @@
     (is (string? reply))
     (is (str/includes? reply "100") "month-to-date total includes the 100€ txn")))
 
-(deftest history-command-replies-with-the-raw-ledger
-  (is (= ledger-fixture
-         (:reply (bot/handle-update cfg ledger-fixture (upd 111 -100 "/history"))))))
+(deftest history-command-replies-with-the-ledger-in-telegram-sized-chunks
+  (testing "a small ledger is one chunk"
+    (is (= [(str/trim-newline ledger-fixture)]
+           (:reply (bot/handle-update cfg ledger-fixture (upd 111 -100 "/history"))))))
+  (testing "a ledger past Telegram's 4096-char cap splits at line boundaries"
+    (let [big   (apply str ledger-fixture
+                       (repeat 200 "\n2026-07-02 Kauf\n  Assets:Alice:Cash\n  Expenses:Umzug:Test  10€\n"))
+          reply (:reply (bot/handle-update cfg big (upd 111 -100 "/history")))]
+      (is (< 1 (count reply)))
+      (is (every? #(< (count %) 3500) reply))
+      (is (= (str/trim-newline big) (str/join "\n" reply)) "nothing lost, no line split"))))
 
 (deftest undo-and-help-commands
   (is (:undo? (bot/handle-update cfg ledger-fixture (upd 111 -100 "/undo"))))
@@ -237,13 +256,55 @@
         "warns that the bot needs delete rights")))
 
 (deftest run-effects-append-failure-sends-warning-instead
-  (let [sent (atom [])]
+  (let [[calls fns] (recorder)]
     (bot/run-effects! {:record ::txn :reply "ok"}
-                      {:append! (fn [_] (throw (ex-info "invalid" {})))
-                       :undo!   (fn [])
-                       :send!   #(swap! sent conj %)})
-    (is (= 1 (count @sent)))
-    (is (not= "ok" (first @sent)) "the success reply must not be sent")))
+                      (assoc fns :append! (fn [_] (throw (ex-info "invalid" {})))))
+    (let [sent (filter #(= :send (first %)) @calls)]
+      (is (= 1 (count sent)))
+      (is (not= "ok" (second (first sent))) "the success reply must not be sent"))))
+
+(deftest run-effects-send-failure-after-append-never-claims-not-recorded
+  ;; the entry IS committed; a "⚠ not recorded" here invites a duplicate re-send
+  (let [[calls fns] (recorder)
+        fns (assoc fns :send! (fn [t] (swap! calls conj [:send t])
+                                (throw (ex-info "telegram down" {}))))
+        err (java.io.StringWriter.)]
+    (binding [*err* err]
+      (bot/run-effects! {:record ::txn :reply "ok" :delete-msg 10} fns))
+    (is (= [:append ::txn] (first @calls)) "the record stands")
+    (is (= [["ok"]] (map rest (filter #(= :send (first %)) @calls)))
+        "only the ✓ confirmation was attempted — never a \"not recorded\" lie")
+    (is (str/includes? (str err) "confirmation") "failure is logged instead")))
+
+(deftest run-effects-contains-all-injected-fn-failures
+  ;; git/Telegram outages must log to stderr, never escape into the polling loop
+  (let [boom (fn [& _] (throw (ex-info "boom" {})))
+        err  (java.io.StringWriter.)]
+    (binding [*err* err]
+      (are [effect broken] (nil? (bot/run-effects! effect (merge (second (recorder)) broken)))
+        {:reply "hi"}               {:send! boom}
+        {:reply ["a" "b"]}          {:send! boom}
+        {:undo? true}               {:undo! boom}
+        {:undo? true}               {:send! boom}
+        {:record ::txn :reply "ok"} {:append! boom :send! boom}))
+    (is (str/includes? (str err) "boom"))))
+
+(deftest run-effects-sends-each-reply-chunk
+  (let [[calls fns] (recorder)]
+    (bot/run-effects! {:reply ["one" "two"]} fns)
+    (is (= [[:send "one"] [:send "two"]] @calls))))
+
+(deftest run-effects-rejects-unknown-effect-keys
+  ;; the :replly incident, made loud: Effect is a closed map
+  (let [[_ fns] (recorder)]
+    (is (thrown? clojure.lang.ExceptionInfo
+                 (bot/run-effects! {:replly "typo"} fns)))
+    (is (thrown? clojure.lang.ExceptionInfo
+                 (bot/run-effects! {:reply "ok" :delete-mgs 10} fns)))))
+
+(deftest run-effects-asserts-the-full-injected-fns-map
+  (is (thrown? java.lang.AssertionError
+               (bot/run-effects! nil (dissoc (second (recorder)) :delete!)))))
 
 (deftest run-effects-undo-reports-what-was-removed
   (let [[calls fns] (recorder)]
@@ -252,5 +313,25 @@
     (is (str/includes? (second (second @calls)) "Drogerie"))))
 
 (deftest run-effects-nil-is-a-no-op
-  (is (nil? (bot/run-effects! nil {:send! (fn [_] (throw (ex-info "must not send" {})))
-                                   :append! (fn [_]) :undo! (fn [])}))))
+  (is (nil? (bot/run-effects! nil {:send!   (fn [_] (throw (ex-info "must not send" {})))
+                                   :append! (fn [_]) :undo! (fn []) :delete! (fn [_])}))))
+
+;; --------------------------------------------------------------------------
+;; wire fixture: sanitized real getUpdates JSON (snake_case, extra fields)
+;; --------------------------------------------------------------------------
+(deftest getupdates-fixture-drives-handle-update
+  (let [[msg edit photo] (:result (json/parse-string
+                                   (slurp (io/resource "ledger/fixtures/updates.json")) true))]
+    (testing "plain expense message records"
+      (let [{:keys [record delete-msg]} (bot/handle-update cfg ledger-fixture msg)]
+        (is (= "Rewe" (:description record)))
+        (is (= ["Expenses" "Lebensmittel" "Rewe"]
+               (:account (second (:postings record)))))
+        (is (== -35.72M (:amount (first (:postings record)))))
+        (is (= 41 delete-msg))))
+    (testing "edited message nudges, never records"
+      (let [{:keys [record reply]} (bot/handle-update cfg ledger-fixture edit)]
+        (is (nil? record))
+        (is (str/includes? reply "edits are ignored"))))
+    (testing "photo caption is not :text — stays silent (captions unsupported)"
+      (is (nil? (bot/handle-update cfg ledger-fixture photo))))))

@@ -1,0 +1,84 @@
+{
+  "ok": true,
+  "result": [
+    {
+      "update_id": 987654001,
+      "message": {
+        "message_id": 41,
+        "from": {
+          "id": 111,
+          "is_bot": false,
+          "first_name": "Alice",
+          "username": "alice_synthetic",
+          "language_code": "de"
+        },
+        "chat": {
+          "id": -100,
+          "title": "WG Haushalt",
+          "type": "group",
+          "all_members_are_administrators": true
+        },
+        "date": 1783602000,
+        "text": "35,72 Rewe #Lebensmittel:Rewe"
+      }
+    },
+    {
+      "update_id": 987654002,
+      "edited_message": {
+        "message_id": 41,
+        "from": {
+          "id": 111,
+          "is_bot": false,
+          "first_name": "Alice",
+          "username": "alice_synthetic",
+          "language_code": "de"
+        },
+        "chat": {
+          "id": -100,
+          "title": "WG Haushalt",
+          "type": "group",
+          "all_members_are_administrators": true
+        },
+        "date": 1783602000,
+        "edit_date": 1783602090,
+        "text": "36,00 Rewe #Lebensmittel:Rewe"
+      }
+    },
+    {
+      "update_id": 987654003,
+      "message": {
+        "message_id": 42,
+        "from": {
+          "id": 222,
+          "is_bot": false,
+          "first_name": "Bob",
+          "language_code": "de"
+        },
+        "chat": {
+          "id": -100,
+          "title": "WG Haushalt",
+          "type": "group",
+          "all_members_are_administrators": true
+        },
+        "date": 1783602200,
+        "photo": [
+          {
+            "file_id": "AgACAgIAAxkBAAMASyntheticThumb0000000000001",
+            "file_unique_id": "AQADsynth001",
+            "file_size": 1302,
+            "width": 90,
+            "height": 51
+          },
+          {
+            "file_id": "AgACAgIAAxkBAAMASyntheticPhoto0000000000002",
+            "file_unique_id": "AQADsynth002",
+            "file_size": 15093,
+            "width": 320,
+            "height": 180
+          }
+        ],
+        "caption": "12,30 Kassenbon #Haushalt:Drogerie"
+      }
+    }
+  ]
+}
