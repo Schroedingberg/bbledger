@@ -87,6 +87,7 @@ resource "hcloud_server" "bot" {
     push_path        = file("${path.module}/../deploy/bbledger-push.path")
     autodeploy_unit  = file("${path.module}/../deploy/bbledger-autodeploy.service")
     autodeploy_timer = file("${path.module}/../deploy/bbledger-autodeploy.timer")
+    firewall_unit    = file("${path.module}/../deploy/bbledger-firewall.service")
   })
 
   # an edited cloud-init must not silently rebuild a running VM — recreate

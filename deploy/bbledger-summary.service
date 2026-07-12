@@ -7,6 +7,7 @@ After=network-online.target docker.service
 Type=oneshot
 EnvironmentFile=/etc/bbledger.env
 ExecStart=/usr/bin/docker run --rm \
+    --cap-drop=ALL --security-opt=no-new-privileges \
     -e BBLEDGER_BOT_TOKEN \
     -v /srv/bbledger/data:/data \
     ghcr.io/schroedingberg/bbledger:latest clojure -M:bot summary

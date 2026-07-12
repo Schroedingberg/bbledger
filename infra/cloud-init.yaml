@@ -7,6 +7,7 @@ package_update: true
 packages:
   - docker.io
   - git
+  - curl
 
 write_files:
   - path: /etc/bbledger.env
@@ -17,6 +18,14 @@ write_files:
     permissions: "0600"
     content: |
       ${indent(6, data_deploy_key)}
+  # GitHub's published host keys (https://api.github.com/meta, 2026-07-12) —
+  # pinned instead of trusting first ssh-keyscan contact
+  - path: /root/.ssh/known_hosts
+    permissions: "0644"
+    content: |
+      github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+      github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
+      github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
   - path: /etc/systemd/system/bbledger-bot.service
     content: |
       ${indent(6, bot_unit)}
@@ -38,15 +47,33 @@ write_files:
   - path: /etc/systemd/system/bbledger-autodeploy.timer
     content: |
       ${indent(6, autodeploy_timer)}
+  - path: /etc/systemd/system/bbledger-firewall.service
+    content: |
+      ${indent(6, firewall_unit)}
 
 runcmd:
   - systemctl enable --now docker
-  - ssh-keyscan github.com >> /root/.ssh/known_hosts
+  # cosign (pinned release, per-artifact sha256 from its cosign_checksums.txt)
+  # verifies image signatures before autodeploy restarts the bot
+  - |
+    set -e
+    arch=$(dpkg --print-architecture)
+    case "$arch" in
+      amd64) sha=ae1ecd212663f3693ad9edf8b1a183900c9a52d3155ba6e354237f9a0f6463fc ;;
+      arm64) sha=2ec865872e331c32fd12b08dae15332d3f92c0aa029219589684a4903ca85d11 ;;
+    esac
+    curl -fsSL -o /usr/local/bin/cosign "https://github.com/sigstore/cosign/releases/download/v3.1.1/cosign-linux-$arch"
+    echo "$sha  /usr/local/bin/cosign" | sha256sum -c -
+    chmod 755 /usr/local/bin/cosign
   - |
     if [ ! -d /srv/bbledger/data/.git ]; then
       git clone '${data_repo}' /srv/bbledger/data
       git -C /srv/bbledger/data config user.name bbledger-bot
       git -C /srv/bbledger/data config user.email bot@localhost
+      # the container writes/commits here as uid 1000 (deploy/Dockerfile);
+      # safe.directory lets root's push unit keep working on the 1000-owned repo
+      chown -R 1000:1000 /srv/bbledger/data
+      git config --system --add safe.directory /srv/bbledger/data
     fi
   # only needed while the GHCR package is private
   - |
@@ -54,4 +81,6 @@ runcmd:
       echo '${ghcr_token}' | docker login ghcr.io -u '${ghcr_user}' --password-stdin
     fi
   - systemctl daemon-reload
+  # firewall (blocks containers from the metadata endpoint) before the bot starts
+  - systemctl enable --now bbledger-firewall.service
   - systemctl enable --now bbledger-bot.service bbledger-summary.timer bbledger-push.path bbledger-autodeploy.timer

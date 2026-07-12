@@ -1,17 +1,33 @@
 # /etc/systemd/system/bbledger-autodeploy.service — continuous deployment:
-# pull :latest and restart the bot only when CI has published a new image.
+# pull :latest and restart the bot only when CI has published a new image
+# that (a) carries a valid cosign signature from this repo's CI (keyless,
+# GitHub OIDC) and (b) passes a one-shot health check — `clojure -M:bot check`
+# loads the real config and calls Telegram getMe. Any failed step fails the
+# unit visibly, the old bot keeps running, and the timer simply tries again.
 # Pull-based on purpose: CI never gets credentials for the server.
 [Unit]
-Description=bbledger: restart the bot when a new image is published
+Description=bbledger: verify, health-check and restart the bot on a new image
 After=docker.service
 Requires=docker.service
 
 [Service]
 Type=oneshot
-# $$ keeps systemd from eating the shell's $; a failed pull (offline, GHCR
-# down) fails the unit visibly and the timer simply tries again
+EnvironmentFile=/etc/bbledger.env
+# cosign keeps its TUF cache under $HOME
+Environment=HOME=/root
+# $$ keeps systemd from eating the shell's $
 ExecStart=/bin/sh -ec '\
-    docker pull -q ghcr.io/schroedingberg/bbledger:latest >/dev/null; \
-    new=$$(docker image inspect -f "{{.Id}}" ghcr.io/schroedingberg/bbledger:latest); \
+    img=ghcr.io/schroedingberg/bbledger:latest; \
+    docker pull -q $$img >/dev/null; \
+    new=$$(docker image inspect -f "{{.Id}}" $$img); \
     cur=$$(docker inspect -f "{{.Image}}" bbledger-bot 2>/dev/null || true); \
-    [ "$$new" = "$$cur" ] || systemctl restart bbledger-bot'
+    [ "$$new" != "$$cur" ] || exit 0; \
+    cosign verify \
+        --certificate-identity-regexp "https://github.com/Schroedingberg/bbledger/.*" \
+        --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+        $$img >/dev/null; \
+    docker run --rm --cap-drop=ALL --security-opt=no-new-privileges \
+        -e BBLEDGER_BOT_TOKEN \
+        -v /srv/bbledger/data:/data:ro \
+        $$img clojure -M:bot check; \
+    systemctl restart bbledger-bot'

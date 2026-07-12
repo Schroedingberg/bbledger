@@ -62,14 +62,20 @@ Security → SSH keys) — every project key is installed on the server.
 
 1. Actions → `infra` → *Run workflow* → `plan`; review the output.
 2. Run again with `apply`. The VM boots, cloud-init installs docker + git,
-   clones the data repo (ledger + config), and starts the bot, the summary
-   timer, and the backup-push path unit.
+   installs a pinned, checksum-verified cosign release, clones the data repo
+   (ledger + config), and starts the bot, the summary timer, and the
+   backup-push path unit. A tiny `bbledger-firewall` unit (reboot-safe)
+   blocks containers from the cloud metadata endpoint, which serves the
+   cloud-init secrets.
 3. Send `12,30 Test` in the Telegram group; expect the ✓ — and the entry
    commit appearing in the data repo moments later.
 
 Redeploying app versions never touches infra: merging to main releases a
 new image, and the server's `bbledger-autodeploy.timer` pulls it and
 restarts the bot within ~5 minutes (pull-based on purpose — CI holds no
-server credentials). `bb deploy` / `bb restart` cover the impatient case.
+server credentials). Before restarting, autodeploy verifies the image's
+cosign signature (keyless, this repo's CI via GitHub OIDC) and runs a
+one-shot `clojure -M:bot check` health check; if either fails, the old
+bot keeps running and the timer retries. `bb deploy` / `bb restart` cover the impatient case.
 `destroy` is safe for the ledger: every entry is pushed to the data repo,
 and the next `apply` resumes from the clone.

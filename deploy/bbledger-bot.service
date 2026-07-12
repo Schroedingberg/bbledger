@@ -2,8 +2,9 @@
 # Expects /etc/bbledger.env with BBLEDGER_BOT_TOKEN=... (chmod 600)
 [Unit]
 Description=bbledger Telegram bot
-After=network-online.target docker.service
+After=network-online.target docker.service bbledger-firewall.service
 Requires=docker.service
+Wants=bbledger-firewall.service
 
 [Service]
 EnvironmentFile=/etc/bbledger.env
@@ -11,6 +12,7 @@ EnvironmentFile=/etc/bbledger.env
 ExecStartPre=-/usr/bin/docker pull ghcr.io/schroedingberg/bbledger:latest
 ExecStartPre=-/usr/bin/docker rm -f bbledger-bot
 ExecStart=/usr/bin/docker run --rm --name bbledger-bot \
+    --cap-drop=ALL --security-opt=no-new-privileges \
     -e BBLEDGER_BOT_TOKEN \
     -v /srv/bbledger/data:/data \
     ghcr.io/schroedingberg/bbledger:latest
