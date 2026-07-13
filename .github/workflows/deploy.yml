@@ -29,52 +29,26 @@ jobs:
     env:
       TF_VAR_location: ${{ inputs.location || 'fsn1' }}
       TF_VAR_server_type: ${{ inputs.server_type || 'cax11' }}
-      # STATE_* secrets absent -> stateless mode: the dedicated Hetzner
-      # project is the source of truth; apply wipes + recreates.
-      HAS_STATE: ${{ secrets.STATE_BUCKET != '' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1.0.8
-      - name: Generate backend.tf (persisted state in an S3-compatible bucket)
-        if: github.event_name == 'workflow_dispatch' && env.HAS_STATE == 'true'
-        run: |
-          cat > backend.tf <<EOF
-          terraform {
-            backend "s3" {
-              key                         = "bbledger/terraform.tfstate"
-              bucket                      = "${{ secrets.STATE_BUCKET }}"
-              region                      = "${{ secrets.STATE_REGION }}"
-              endpoints                   = { s3 = "${{ secrets.STATE_ENDPOINT }}" }
-              skip_region_validation      = true
-              skip_credentials_validation = true
-              skip_requesting_account_id  = true
-              skip_metadata_api_check     = true
-              skip_s3_checksum            = true
-              use_path_style              = true
-            }
-          }
-          EOF
-      - name: Init (PR — providers only, no backend, no secrets)
-        if: github.event_name == 'pull_request'
-        run: tofu init -backend=false
-      - name: Init
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.STATE_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.STATE_SECRET_KEY }}
-        run: tofu init
+      # stateless by design: no backend, throwaway local state. The dedicated
+      # Hetzner project is the source of truth — apply/destroy first wipe the
+      # bbledger resources by name, then apply recreates from scratch.
+      - run: tofu init
       - run: tofu fmt -check && tofu validate
       - uses: hetznercloud/setup-hcloud@4ff9bbeda4053fb69dd7fa1fcbdfcce7e648bf33 # v1.0.2
-        if: env.HAS_STATE == 'false' && github.event_name == 'workflow_dispatch' && inputs.action != 'plan'
-      - name: Wipe project (stateless apply/destroy starts from empty)
-        if: env.HAS_STATE == 'false' && github.event_name == 'workflow_dispatch' && inputs.action != 'plan'
+        if: github.event_name == 'workflow_dispatch' && inputs.action != 'plan'
+      - name: Wipe project (apply/destroy start from empty)
+        if: github.event_name == 'workflow_dispatch' && inputs.action != 'plan'
         env:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
         run: |
           hcloud server delete bbledger-bot || true
           hcloud firewall delete bbledger-ssh-only || true
-      # plan/apply/destroy share one secret set, scoped to the step (never
-      # job-wide, never visible to third-party actions or PR runs)
+      # plan/apply share one secret set, scoped to the step (never job-wide,
+      # never visible to third-party actions or PR runs); destroy is fully
+      # handled by the wipe step above
       - name: Plan
         if: inputs.action == 'plan'
         env:
@@ -83,8 +57,6 @@ jobs:
           TF_VAR_data_repo: ${{ secrets.DATA_REPO }}
           TF_VAR_data_deploy_key: ${{ secrets.DATA_DEPLOY_KEY }}
           TF_VAR_ghcr_token: ${{ secrets.GHCR_PULL_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.STATE_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.STATE_SECRET_KEY }}
         run: tofu plan -no-color
       - name: Apply
         if: inputs.action == 'apply'
@@ -94,18 +66,4 @@ jobs:
           TF_VAR_data_repo: ${{ secrets.DATA_REPO }}
           TF_VAR_data_deploy_key: ${{ secrets.DATA_DEPLOY_KEY }}
           TF_VAR_ghcr_token: ${{ secrets.GHCR_PULL_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.STATE_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.STATE_SECRET_KEY }}
         run: tofu apply -auto-approve -no-color
-      - name: Destroy
-        if: inputs.action == 'destroy' && env.HAS_STATE == 'true'
-        env:
-          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
-          TF_VAR_bot_token: ${{ secrets.BBLEDGER_BOT_TOKEN }}
-          TF_VAR_data_repo: ${{ secrets.DATA_REPO }}
-          TF_VAR_data_deploy_key: ${{ secrets.DATA_DEPLOY_KEY }}
-          TF_VAR_ghcr_token: ${{ secrets.GHCR_PULL_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.STATE_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.STATE_SECRET_KEY }}
-        run: tofu destroy -auto-approve -no-color
-        # stateless destroy is fully handled by the wipe step above

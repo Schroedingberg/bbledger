@@ -5,9 +5,9 @@ terraform {
   required_providers {
     hcloud = { source = "hetznercloud/hcloud" }
   }
-  # No backend block here: stateless mode (default) uses throwaway local
-  # state; with STATE_* secrets set, the workflow generates a backend.tf
-  # pointing at an S3-compatible bucket before init.
+  # No backend: stateless by design, throwaway local state. The dedicated
+  # Hetzner project is the source of truth — the infra workflow deletes the
+  # bbledger resources by name before apply recreates them.
 }
 
 provider "hcloud" {

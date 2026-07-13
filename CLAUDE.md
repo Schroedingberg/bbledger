@@ -86,9 +86,9 @@ on green main. Deploying a new app version to the server = push to main, then
 `ssh root@<server> systemctl restart bbledger-bot` (the unit pulls `:latest` on start).
 
 Infra (`infra/`, OpenTofu, `infra` workflow with plan/apply/destroy + location/server_type
-inputs): one Hetzner server in a **dedicated project**, default **stateless mode** — no tfstate
-backend; apply first deletes the bbledger resources by name via hcloud CLI and recreates
-(setting the `STATE_*` secrets switches to persisted S3-compatible state). cloud-init injects
+inputs): one Hetzner server in a **dedicated project**, **stateless by design** — no tfstate
+backend; apply first deletes the bbledger resources by name via hcloud CLI and recreates,
+so nothing else may ever live in that project. cloud-init injects
 the `deploy/` systemd units **verbatim** (`file()` in main.tf) — editing `deploy/*` changes both
 the manual-VPS path and provisioning. The VM is disposable: cloud-init clones the private data
 repo; every entry is pushed back to it. Server SSH keys come from the Hetzner project
