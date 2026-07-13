@@ -4,12 +4,13 @@ Tiny hledger-subset for splitting household costs by income ratio, plus a
 Telegram bot for day-to-day recording. The ledger file is the database:
 plain text, hledger-compatible, one git commit per bot entry.
 
-## CLI (babashka)
+## Reports
+
+The ledger file is hledger-compatible (guarded by the conformance suite), so
+ad-hoc reports come from hledger itself:
 
 ```sh
-bb ledger bal Verrechnung --auto   # settlement: negative = owes, positive = is owed
-bb ledger is                       # income statement
-bb ledger bs                       # balance sheet
+hledger -f household.ledger bal Verrechnung --auto   # settlement: negative = owes
 bb test                            # full suite (needs hledger for conformance)
 ```
 
@@ -50,12 +51,11 @@ business-logic API; contracts are frozen in [CONTRACT.md](CONTRACT.md).
 | namespace       | role                                              | runtime  |
 |-----------------|---------------------------------------------------|----------|
 | `ledger.parse`  | journal text -> data (instaparse)                 | bb + JVM |
-| `ledger.report` | balances, auto-posting rules, rendering           | bb + JVM |
+| `ledger.report` | balance inference, auto-posting rules, sums       | bb + JVM |
 | `ledger.core`   | public facade: expense, settlement, summary, ...  | bb + JVM |
 | `ledger.bot`    | pure: updates -> effect descriptions              | bb + JVM |
 | `ledger.store`  | append + validate + git commit per entry          | bb + JVM |
 | `ledger.main`   | clj-tg-bot-api long-polling wiring                | JVM only |
-| `ledger.cli`    | `bb ledger` subcommands                           | bb       |
 
 Tests run on both runtimes: `bb test` and `clojure -M:test`.
 

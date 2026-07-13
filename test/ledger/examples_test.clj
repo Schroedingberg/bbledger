@@ -1,7 +1,7 @@
 (ns ledger.examples-test
   "Illustrative, documentation-style examples of how each piece behaves.
    Read these top-to-bottom to understand the data shapes and the engine."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest is]]
             [ledger.parse :as parse]
             [ledger.report :as report]))
 
@@ -67,19 +67,3 @@
         added (fn [txn] (count (filter :virtual? (:postings (first (report/apply-auto [rule] [txn]))))))]
     (is (= 1 (added (with "Miete"))))         ; ordinary payment → rule fires
     (is (= 0 (added (with "Kaution"))))))     ; excluded by not:desc
-
-(deftest tree-render-rolls-children-up-into-the-parent
-  (let [txns [{:date "d" :description ""
-               :postings [{:account ["Verrechnung" "Alice"]           :amount -500M :commodity "€" :virtual? false}
-                          {:account ["Verrechnung" "Alice" "Kaution"] :amount 300M  :commodity "€" :virtual? false}]}]
-        out  (report/render txns {:tree? true :commodity "€" :accounts ["Verrechnung"]})]
-    (testing "parent shows the rolled-up net, child shown indented underneath"
-      (is (re-find #"-200\.00 €\s+Verrechnung:Alice" out))
-      (is (re-find #"300\.00 €\s+Kaution" out)))))
-
-(deftest income-statement-net-is-revenues-minus-expenses
-  (let [txns [{:date "d" :description ""
-               :postings [{:account ["Expenses" "Food"] :amount 30M  :commodity "€" :virtual? false}
-                          {:account ["Assets" "Cash"]   :amount -30M :commodity "€" :virtual? false}]}]
-        out  (report/income-statement txns {:tree? true})]
-    (is (re-find #"Net: -30\.00 €" out))))    ; a pure expense is a net loss

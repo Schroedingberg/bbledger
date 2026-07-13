@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 bb test              # full suite (lint-gated); needs `hledger` on PATH for the conformance oracle
 bb lint              # clj-kondo over src + test (also runs as a dependency of `bb test`)
 clojure -M:test      # same suite on the JVM — run both before committing; parity is a requirement
-bb ledger bal Verrechnung --auto   # the CLI against sample.ledger (negative = owes)
+hledger -f sample.ledger bal Verrechnung --auto   # ad-hoc reports come from hledger (negative = owes)
 ```
 
 Run a single test namespace under babashka (no task for it):
@@ -40,7 +40,9 @@ Run the bot locally (JVM 21+ only): `BBLEDGER_CONFIG=... BBLEDGER_BOT_TOKEN=... 
 
 Functional core / imperative shell. **`ledger.core` is the single public business-logic API**
 (pure, data in/data out); `ledger.parse` (text→data, instaparse grammar in `resources/ledger.bnf`)
-and `ledger.report` (balance inference, auto-posting rules, rendering) are internals behind it.
+and `ledger.report` (balance inference, auto-posting rules, account sums) are internals behind it.
+There is no report rendering: the ledger file is hledger-compatible, so ad-hoc reports come from
+hledger itself; the bot formats its own replies.
 
 The bot pipeline: `ledger.main` (JVM wiring: clj-tg-bot-api long-polling, strictly sequential
 single consumer) → `ledger.bot/handle-update` (pure: raw snake_case Telegram update map in,

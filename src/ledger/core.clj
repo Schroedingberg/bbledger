@@ -1,7 +1,7 @@
 (ns ledger.core
   "Public API of the bbledger business logic. Pure: ledger text or data in,
    data out. Shapes and signatures are frozen in CONTRACT.md (Phase 2).
-   Rendering and I/O live in the adapter namespaces (bot, store, main, cli)."
+   Formatting and I/O live in the adapter namespaces (bot, store, main)."
   (:require [clojure.string :as str]
             [ledger.parse :as parse]
             [ledger.report :as report]
@@ -52,19 +52,6 @@
                    "  €" (.toPlainString amount))))
        (cons (str/trimr (str date " " description)))
        (str/join "\n")))
-
-(defn balances
-  "Sum postings per account -> {account-vec bigdec}.
-   opts: {:auto? bool :accounts [substr ...]}."
-  [{:keys [rules transactions]} {:keys [auto? accounts]}]
-  (let [sums (report/account-sums (cond->> transactions
-                                    auto? (report/apply-auto rules)))]
-    (if (seq accounts)
-      (into {} (filter (fn [[acct _]]
-                         (let [a (str/join ":" acct)]
-                           (some #(str/includes? a %) accounts)))
-                       sums))
-      sums)))
 
 (defn settlement
   "Net Verrechnung per person with rules applied -> {\"Alice\" 39.11M ...}.

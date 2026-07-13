@@ -1,7 +1,6 @@
 {:paths ["src" "resources"]
- :deps  {org.babashka/cli                  {:mvn/version "0.8.61"}
-         io.github.babashka/instaparse-bb {:git/sha "97ed438f22ccb34e7c3ef0d80eb46c133d4c3092"}
-         metosin/malli                     {:mvn/version "0.19.1"}}
+ :deps  {io.github.babashka/instaparse-bb {:git/sha "97ed438f22ccb34e7c3ef0d80eb46c133d4c3092"}
+         metosin/malli                    {:mvn/version "0.19.1"}}
  :tasks {:init
          (do (require '[clojure.string :as str])
              (defn server-ip
@@ -25,9 +24,6 @@
                                           "/.ssh/id_bbledger-telegram-bot"))
                       (str "root@" (server-ip)) cmd)))
 
-         ledger {:doc  "Ledger reports. Try: bb ledger bal -f sample.ledger --auto"
-                 :requires ([ledger.cli])
-                 :task (apply ledger.cli/-main *command-line-args*)}
          lint  {:doc  "clj-kondo over src and test (also gates bb test)"
                 :task (shell "clj-kondo --lint src test")}
          test  {:doc  "Run examples + properties + hledger conformance + bot suite"
@@ -44,10 +40,6 @@
                                                      'ledger.store-test
                                                      'ledger.integration-test)]
                         (System/exit (if (pos? (+ fail error)) 1 0)))}
-         bench {:doc  "Timing benchmark vs hledger"
-                :extra-paths ["test"]
-                :requires ([ledger.bench])
-                :task (ledger.bench/run)}
 
          server-ip {:doc  "Print the bot VM's IP"
                     :task (println (server-ip))}
