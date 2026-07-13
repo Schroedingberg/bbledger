@@ -1,7 +1,22 @@
 (ns ledger.parse
   "Parser for the hledger-subset journal. Loads resources/ledger.bnf via
-   instaparse-bb, groups source lines into blocks, then parses each line and
-   transforms the result into the shapes frozen in CONTRACT.md."
+   instaparse-bb, groups source lines into blocks, then parses each line.
+
+   Output shapes — the data contract every other namespace consumes:
+
+     txn          {:date \"2026-06-26\"            ; ISO string
+                   :description \"Kueche\"         ; \"\" when absent
+                   :postings [posting ...]}
+     posting      {:account [\"Assets\" \"Bob\" \"Cash\"] ; split on \":\"
+                   :amount -8927M                  ; bigdec, nil when elided
+                   :commodity \"€\"                ; nil when elided
+                   :virtual? false}                ; true when in (parens)
+     rule         {:query [term ...] :postings [rule-posting ...]}
+     term         {:type :account | :desc | :not-desc, :pattern \"...\"}
+     rule-posting {:account [segs] :multiplier -0.6M :virtual? true}
+
+   Amounts are bigdec, accounts vectors of string segments, dates strings
+   (compare lexicographically); single commodity \"€\" throughout."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [instaparse.core :as insta]))

@@ -29,9 +29,9 @@ Run the bot locally (JVM 21+ only): `BBLEDGER_CONFIG=... BBLEDGER_BOT_TOKEN=... 
   `instaparse.core` namespace, so `ledger.parse` is runtime-agnostic. `babashka.process` is
   built into bb and a lib on the JVM. `ledger.main` requires clj-tg-bot-api (JVM-only) and is
   never loaded by tests or bb.
-- **CONTRACT.md is the merge interface.** Data shapes (txn/posting/rule), the core API signatures,
-  bot effect shapes, and the config shape are frozen there. Executable versions: the malli
-  schemas `ledger.core/Expense` and `ledger.bot/Config`.
+- **The schemas are the contract.** Executable: the malli schemas `ledger.core/Expense`,
+  `ledger.bot/Config`, and `ledger.bot/Effect`. The parsed data shapes (txn/posting/rule) are
+  documented in the `ledger.parse` ns docstring — keep them stable.
 - **This repo is public.** Household state (`household.ledger`, `config.edn`) lives in a separate
   private data repo, never here. `sample.ledger` and all test fixtures are synthetic
   (Alice/Bob, 0.6/0.4 ratio) — keep it that way. `config.edn` is gitignored.

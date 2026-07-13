@@ -1,5 +1,5 @@
 (ns ledger.bot-test
-  "Failing-first spec for the pure bot layer (CONTRACT.md Phase 2)."
+  "Spec for the pure bot layer (effect shapes: ledger.bot/Effect)."
   (:require [cheshire.core :as json]
             [clojure.java.io :as io]
             [clojure.string :as str]

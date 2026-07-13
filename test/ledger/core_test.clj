@@ -1,5 +1,5 @@
 (ns ledger.core-test
-  "Failing-first spec for the ledger.core public API (CONTRACT.md Phase 2).
+  "Spec for the ledger.core public API.
    Amounts are bigdec: compare with ==, never =."
   (:require [clojure.test :refer [deftest is testing]]
             [ledger.core :as core]))

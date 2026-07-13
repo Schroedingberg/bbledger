@@ -1,6 +1,6 @@
 (ns ledger.store
   "Persistence: the ledger file is the database, one git commit per entry.
-   The bot process is the only writer (see CONTRACT.md Phase 2)."
+   The bot process is the only writer."
   (:require [babashka.process :as p]
             [clojure.string :as str]
             [ledger.core :as core])

@@ -1,6 +1,7 @@
 (ns ledger.core
   "Public API of the bbledger business logic. Pure: ledger text or data in,
-   data out. Shapes and signatures are frozen in CONTRACT.md (Phase 2).
+   data out. The write contract is the malli schema Expense below; the parsed
+   data shapes (txn/posting/rule) are documented in the ledger.parse ns.
    Formatting and I/O live in the adapter namespaces (bot, store, main)."
   (:require [clojure.string :as str]
             [ledger.parse :as parse]

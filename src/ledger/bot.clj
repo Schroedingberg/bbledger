@@ -1,6 +1,6 @@
 (ns ledger.bot
   "Pure Telegram-bot decision layer: raw update maps in, effect descriptions
-   out (see CONTRACT.md Phase 2). The only side effects happen in run-effects!
+   out (schema Effect below). The only side effects happen in run-effects!
    through injected functions."
   (:require [clojure.string :as str]
             [ledger.core :as core]

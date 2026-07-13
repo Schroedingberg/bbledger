@@ -46,7 +46,9 @@ on any failure before confirming.
 ## Architecture
 
 Functional core / imperative shell — `ledger.core` is the only public
-business-logic API; contracts are frozen in [CONTRACT.md](CONTRACT.md).
+business-logic API. The executable contracts are the malli schemas
+`ledger.core/Expense`, `ledger.bot/Config`, and `ledger.bot/Effect`; the
+parsed data shapes are documented in the `ledger.parse` ns docstring.
 
 | namespace       | role                                              | runtime  |
 |-----------------|---------------------------------------------------|----------|
