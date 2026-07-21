@@ -9,9 +9,12 @@
    is the one JVM-only namespace, so a test of it can only run under JVM
    (clojure -M:test auto-discovers it)."
   (:require [cheshire.core :as json]
+            [clojure.edn :as edn]
+            [clojure.java.io :as io]
             [clojure.java.shell :refer [sh]]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [ledger.bot :as bot]
             [ledger.bot-test :as fx]
             [ledger.main :as main]
             [marksto.clj-tg-bot-api.core :as tg]
@@ -129,6 +132,24 @@
         (is (= 200 (:status (post port secret (fx/upd 999 -100 "12,30 X"))))))
       (is (empty? @sent))
       (is (= ["init"] (subjects dir))))))
+
+(deftest parse-users-reads-a-flat-string
+  (is (= {123 "Alice" 456 "Bob"} (#'main/parse-users "123:Alice,456:Bob")))
+  (is (= {7 "Alice"} (#'main/parse-users " 7 : Alice ")) "whitespace tolerated"))
+
+(deftest env-overrides-layer-onto-config
+  (let [base {:chat-id 0 :users {} :tz "Europe/Berlin"}]
+    (testing "chat-id + users come from env, other fields untouched"
+      (is (= {:chat-id -100 :users {123 "Alice" 456 "Bob"} :tz "Europe/Berlin"}
+             (#'main/apply-overrides base {"BBLEDGER_CHAT_ID" "-100"
+                                           "BBLEDGER_USERS"   "123:Alice,456:Bob"}))))
+    (testing "no env vars -> config unchanged"
+      (is (= base (#'main/apply-overrides base {}))))))
+
+(deftest baked-default-config-is-valid
+  (is (nil? (bot/config-error
+             (edn/read-string (slurp (io/resource "config.default.edn")))))
+      "resources/config.default.edn must satisfy the Config schema"))
 
 (deftest malformed-body-answers-200-and-changes-nothing
   ;; a bad body must not 5xx: Telegram redelivers on failure, which could

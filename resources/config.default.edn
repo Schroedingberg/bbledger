@@ -1,0 +1,9 @@
+;; Baked default config — the fallback when no BBLEDGER_CONFIG file is present
+;; (e.g. an ephemeral PaaS run). Set the test-specific fields with plain env
+;; vars: BBLEDGER_CHAT_ID and BBLEDGER_USERS ("id:Name,id:Name"). A real deploy
+;; ships its own config.edn (via the data repo) which fully overrides these.
+{:chat-id          0
+ :ledger-file      "/data/household.ledger"
+ :users            {}
+ :default-category ["Sonstiges"]
+ :tz               "Europe/Berlin"}

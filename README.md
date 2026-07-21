@@ -142,6 +142,32 @@ mirrored off-site (parity with cloud-init + the `bbledger-push` systemd unit).
 > re-seed. Seed the volume manually instead by leaving `BBLEDGER_DATA_REPO`
 > unset and putting a git-initialised `household.ledger` + `config.edn` on it.
 
+### Throwaway / ephemeral test
+
+To try webhook mode against real Telegram without any persistence, run it
+env-only: no volume, no data repo, no config file. With `BBLEDGER_DATA_REPO`
+unset and a bare `/data`, the entrypoint **auto-seeds a throwaway ledger** from
+the bundled `sample.ledger` (Alice/Bob), and config falls back to the baked
+defaults (`resources/config.default.edn`) with the two test-specific fields
+supplied as **plain env vars** — no EDN in the environment. Set:
+
+- `BBLEDGER_BOT_TOKEN=<token>`
+- `BBLEDGER_WEBHOOK_URL=<orkestr URL>`
+- `BBLEDGER_CHAT_ID=-100…` — the test group
+- `BBLEDGER_USERS=<your-id>:Alice` — `id:Name` pairs, comma-separated (the
+  names Alice/Bob line up with `sample.ledger`'s split rules)
+
+Everything (config, ledger, rules) comes up with zero setup and resets on
+restart. Config layering in general: the baked defaults, then a
+`BBLEDGER_CONFIG` file if present (the real deploy's `config.edn`), then those
+env overrides on top.
+
+**Always use a separate @BotFather bot for this, never the production token** —
+Telegram allows one update consumer per token, so pointing a webhook at the prod
+token would stop the prod bot's long-polling. (Merging this to `main` is itself
+safe for the Hetzner bot: webhook mode is opt-in via `BBLEDGER_WEBHOOK_URL`,
+which the VM doesn't set.)
+
 ## License
 
 Eclipse Public License 2.0 — see [LICENSE](LICENSE).

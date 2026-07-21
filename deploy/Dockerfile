@@ -32,6 +32,8 @@ RUN clojure -P -M:bot
 COPY src src
 COPY resources resources
 COPY deploy/provision.clj /app/provision.clj
+# baked ledger for the entrypoint's ephemeral (no-data-repo) seed
+COPY sample.ledger /app/sample.ledger
 
 # set by CI to the release tag; "which version is running?" =
 # docker exec bbledger-bot printenv BBLEDGER_VERSION (bb restart prints it)

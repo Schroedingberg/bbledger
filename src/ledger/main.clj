@@ -7,6 +7,7 @@
   (:require [cheshire.core :as json]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [ledger.bot :as bot]
             [ledger.store :as store]
             [marksto.clj-tg-bot-api.core :as tg]
@@ -14,11 +15,33 @@
             [org.httpkit.server :as http])
   (:gen-class))
 
-(defn- load-config []
-  (let [path (or (System/getenv "BBLEDGER_CONFIG") "config.edn")
-        cfg  (edn/read-string (slurp path))]
+(defn- parse-users
+  "\"123:Alice,456:Bob\" -> {123 \"Alice\", 456 \"Bob\"} — the :users map as a
+   flat string, so a PaaS can set it without any EDN in the environment."
+  [s]
+  (into {} (for [pair (str/split s #",")
+                 :let [[id nm] (str/split pair #":" 2)]]
+             [(parse-long (str/trim id)) (str/trim nm)])))
+
+(defn- apply-overrides
+  "Layer per-field env overrides onto cfg (`env` is a getenv-like fn). Lets an
+   ephemeral/PaaS run set the test-specific values with plain env vars, no file."
+  [cfg env]
+  (cond-> cfg
+    (env "BBLEDGER_CHAT_ID") (assoc :chat-id (parse-long (env "BBLEDGER_CHAT_ID")))
+    (env "BBLEDGER_USERS")   (assoc :users   (parse-users (env "BBLEDGER_USERS")))))
+
+(defn- load-config
+  "Config = baked defaults (resources/config.default.edn) <- the BBLEDGER_CONFIG
+   file if it exists <- per-field env overrides. A real deploy ships its own
+   config.edn; an ephemeral run needs no file — just BBLEDGER_CHAT_ID/_USERS."
+  []
+  (let [default (edn/read-string (slurp (io/resource "config.default.edn")))
+        path    (or (System/getenv "BBLEDGER_CONFIG") "config.edn")
+        file    (when (.exists (io/file path)) (edn/read-string (slurp path)))
+        cfg     (apply-overrides (merge default file) #(System/getenv %))]
     (if-let [errors (bot/config-error cfg)]
-      (throw (ex-info (str "invalid config " path ": " errors) {:errors errors}))
+      (throw (ex-info (str "invalid config: " errors) {:errors errors}))
       cfg)))
 
 (defn- ->client []
