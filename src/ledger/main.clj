@@ -29,18 +29,22 @@
   "Feed one raw update (wire shape, snake_case keywords — clj-tg-bot-api
    delivers getUpdates results unnormalized, and Telegram's webhook POSTs the
    same JSON) through the pure bot layer, running its effects against the store
-   and Telegram. Returns false so the long-polling library never repeats an
-   update."
-  [cfg client update]
-  (bot/run-effects!
-   (bot/handle-update cfg (store/read-ledger cfg) update)
-   {:append! #(store/append! cfg %)
-    :undo!   #(store/undo! cfg)
-    :send!   #(tg/make-request! client :send-message
-                                {:chat-id (:chat-id cfg) :text %})
-    :delete! #(tg/make-request! client :delete-message
-                                {:chat-id (:chat-id cfg) :message-id %})})
-  false)
+   and Telegram. When push? and the effect changed the repo (record/undo),
+   mirror the new commit to the data repo's remote (see store/push!). Returns
+   false so the long-polling library never repeats an update."
+  [cfg client push? update]
+  (let [effect (bot/handle-update cfg (store/read-ledger cfg) update)]
+    (bot/run-effects!
+     effect
+     {:append! #(store/append! cfg %)
+      :undo!   #(store/undo! cfg)
+      :send!   #(tg/make-request! client :send-message
+                                  {:chat-id (:chat-id cfg) :text %})
+      :delete! #(tg/make-request! client :delete-message
+                                  {:chat-id (:chat-id cfg) :message-id %})})
+    (when (and push? (or (:record effect) (:undo? effect)))
+      (store/push! cfg))
+    false))
 
 (defn- summary-update
   "Synthetic /summary update from a known user so the one-shot summary
@@ -60,7 +64,7 @@
    http-kit dispatches requests concurrently. Always answers 200 to a genuine
    Telegram POST — like the long-polling path's `false` return, this tells
    Telegram not to redeliver (a redelivery could double-book an expense)."
-  [cfg client secret lock]
+  [cfg client push? secret lock]
   (fn [{:keys [request-method headers body]}]
     (cond
       (not= :post request-method)
@@ -73,7 +77,7 @@
       (do (try
             (let [update (json/parse-stream (io/reader body) true)]
               (locking lock
-                (process-update! cfg client update)))
+                (process-update! cfg client push? update)))
             (catch Exception e
               (.printStackTrace e)))
           {:status 200 :body "ok"}))))
@@ -84,7 +88,7 @@
    `X-Telegram-Bot-Api-Secret-Token` header (BBLEDGER_WEBHOOK_SECRET, or a
    fresh random one each boot). `drop-pending-updates` avoids replaying a
    backlog — including anything queued while long-polling — on (re)deploy."
-  [cfg client url]
+  [cfg client push? url]
   (let [secret (or (System/getenv "BBLEDGER_WEBHOOK_SECRET") (str (random-uuid)))
         port   (Integer/parseInt (or (System/getenv "PORT") "8080"))]
     (tg/make-request! client :set-webhook
@@ -92,7 +96,7 @@
                        :secret-token         secret
                        :allowed-updates      ["message" "edited_message"]
                        :drop-pending-updates true})
-    (http/run-server (webhook-handler cfg client secret (Object.)) {:port port})
+    (http/run-server (webhook-handler cfg client push? secret (Object.)) {:port port})
     (println (str "bbledger webhook listening on :" port " for " url))
     @(promise)))
 
@@ -103,18 +107,21 @@
    Arg \"summary\": send a one-shot month-to-date summary to the group and exit."
   [& args]
   (let [cfg    (load-config)
-        client (->client)]
+        client (->client)
+        ;; mirror each new commit to the data repo's remote (PaaS parity with
+        ;; the Hetzner bbledger-push unit); off unless explicitly enabled
+        push?  (some? (System/getenv "BBLEDGER_GIT_PUSH"))]
     (cond
       (= "summary" (first args))
-      (do (process-update! cfg client (summary-update cfg))
+      (do (process-update! cfg client push? (summary-update cfg))
           (System/exit 0))
 
       (System/getenv "BBLEDGER_WEBHOOK_URL")
-      (run-webhook! cfg client (System/getenv "BBLEDGER_WEBHOOK_URL"))
+      (run-webhook! cfg client push? (System/getenv "BBLEDGER_WEBHOOK_URL"))
 
       :else
       (do ;; single consumer thread => updates are handled strictly sequentially
         (tg-updates/setup-long-polling!
-         {:long-polling {:update-handler #(process-update! cfg client %)}}
+         {:long-polling {:update-handler #(process-update! cfg client push? %)}}
          client)
         @(promise)))))

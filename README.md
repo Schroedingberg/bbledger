@@ -113,21 +113,34 @@ and receives updates as POSTs (on `$PORT`, default `8080`; the exposed port and
 Dockerfile are auto-detected). Unset, nothing changes: the Hetzner/systemd
 deploy above keeps long-polling.
 
+The container **self-provisions** the same way the Hetzner VM does, only
+in-process: a babashka entrypoint ([`deploy/provision.clj`](deploy/provision.clj))
+clones the private data repo into `/data` on first boot, and the app pushes each
+new commit back — so a fresh volume comes up with your rules + history and stays
+mirrored off-site (parity with cloud-init + the `bbledger-push` systemd unit).
+
 1. `orkestr init` (link the repo) and add a **volume mounted at `/data`** — the
    ledger git repo lives there, same as `:ledger-file` in the config.
-2. Seed the volume once with your `household.ledger` + `config.edn` (as in the
-   manual steps above), initialised as a git repo.
-3. Set env vars: `BBLEDGER_BOT_TOKEN`, `BBLEDGER_CONFIG=/data/config.edn`,
-   `BBLEDGER_WEBHOOK_URL=https://<your-app-url>` (the URL orkestr assigns), and
-   optionally `BBLEDGER_WEBHOOK_SECRET` (any string — else a random one is
-   generated per boot; Telegram echoes it in the
-   `X-Telegram-Bot-Api-Secret-Token` header, which the server verifies).
-4. `orkestr deploy .`, then send `12,30 Test` in the group and expect the ✓.
+2. Set env vars:
+   - `BBLEDGER_BOT_TOKEN` — bot token
+   - `BBLEDGER_CONFIG=/data/config.edn`
+   - `BBLEDGER_WEBHOOK_URL=https://<your-app-url>` — the URL orkestr assigns
+     (its presence selects webhook mode)
+   - `BBLEDGER_WEBHOOK_SECRET` *(optional)* — any string; else a random one is
+     generated per boot. Telegram echoes it in the
+     `X-Telegram-Bot-Api-Secret-Token` header, which the server verifies.
+   - `BBLEDGER_DATA_REPO` — SSH URL of the private data repo (clone-on-boot)
+   - `BBLEDGER_DEPLOY_KEY` — its deploy key (the same value as the infra
+     `DATA_DEPLOY_KEY` secret); `BBLEDGER_GIT_HOST` if not `github.com`
+   - `BBLEDGER_GIT_PUSH=1` — mirror each entry back to the data repo
+3. `orkestr deploy .`, then send `12,30 Test` in the group and expect the ✓ —
+   and the entry commit landing in the data repo moments later.
 
-> **Persistence caveat:** entries are committed to the `/data` volume (which
-> survives redeploys) but **not** pushed off-site — the systemd path unit that
-> mirrors to the private data repo only exists on the Hetzner VM. Off-site
-> push-back from the container is a follow-up. Back up the volume meanwhile.
+> On redeploy the entrypoint sees an existing `/data/.git` and **skips the
+> clone** (the bot is the sole writer, so it never pulls). Changing rules or
+> `config.edn` in the data repo therefore needs a manual pull or a volume
+> re-seed. Seed the volume manually instead by leaving `BBLEDGER_DATA_REPO`
+> unset and putting a git-initialised `household.ledger` + `config.edn` on it.
 
 ## License
 

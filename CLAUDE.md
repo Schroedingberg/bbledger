@@ -53,8 +53,12 @@ which is why the whole pipeline is testable under bb with no network.
 Persistence (`ledger.store`): **the ledger file is the database.** `append!` renders the txn
 canonically (`core/txn->str`), appends, re-parses the WHOLE file to validate (restoring the
 previous content on failure), then makes one git commit per entry (`"expense: <desc>"`).
-`undo!` reverts HEAD only if it is a bot expense commit. On the server, a systemd path unit
-pushes the data repo after every change.
+`undo!` reverts HEAD only if it is a bot expense commit. Off-site mirroring has two
+interchangeable paths: on the Hetzner VM a systemd path unit pushes the data repo after every
+change; on a PaaS (no systemd) `store/push!` does it in-process, gated on env `BBLEDGER_GIT_PUSH`
+and driven by `ledger.main` after each record/undo. Seeding a fresh volume is likewise split:
+cloud-init clones on the VM, `deploy/provision.clj` (the container's babashka entrypoint) clones
+when `BBLEDGER_DATA_REPO`/`BBLEDGER_DEPLOY_KEY` are set.
 
 ## Non-obvious invariants
 

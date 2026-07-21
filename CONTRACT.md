@@ -270,6 +270,9 @@ Amounts are bigdec — compare with `==` in tests, never `=` (scale differs).
 (undo! [cfg])         ; HEAD commit message starts with "expense: "?
                       ;   yes: git revert --no-edit HEAD -> return the <desc>
                       ;   no:  return nil (never revert non-bot commits)
+(push! [cfg])         ; git push origin HEAD, tolerant (swallow failure, retried
+                      ; next entry); ledger.main calls it after record/undo when
+                      ; env BBLEDGER_GIT_PUSH is set (PaaS off-site mirror)
 
 ;; main — JVM-only entry points
 (-main [& args])      ; no args: load config (path from env BBLEDGER_CONFIG,
