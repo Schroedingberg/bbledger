@@ -38,21 +38,27 @@
 (defn- subjects [dir]
   (str/split-lines (:out (sh "git" "-C" (str dir) "log" "--format=%s"))))
 
+(defn- rm-rf [^java.io.File f]
+  (when (.isDirectory f) (run! rm-rf (.listFiles f)))
+  (.delete f))
+
 (defn- with-webhook
-  "Stand up the real webhook handler on an ephemeral port with Telegram's
-   outbound client stubbed (each make-request! captured as [method params] in
-   `sent`). Calls (f {:keys [port sent dir]}); always stops the server."
+  "Stand up the real webhook handler on a loopback-only ephemeral port with
+   Telegram's outbound client stubbed (each make-request! captured as
+   [method params] in `sent`). Calls (f {:keys [port sent dir]}); always stops
+   the server and deletes the temp repo. Self-contained: no external network
+   (localhost only, Telegram stubbed), no writes outside its own temp dir."
   [f]
   (let [{:keys [dir cfg]} (fresh-repo)
         sent    (atom [])
         handler (#'main/webhook-handler cfg ::client false secret (Object.))
-        stop    (http/run-server handler {:port 0})
+        stop    (http/run-server handler {:port 0 :ip "127.0.0.1"})
         port    (:local-port (meta stop))]
     (try
       (with-redefs [tg/make-request! (fn [_ method params]
                                        (swap! sent conj [method params]) {:ok true})]
         (f {:port port :sent sent :dir dir}))
-      (finally (stop)))))
+      (finally (stop) (rm-rf dir)))))
 
 (def ^:private client (HttpClient/newHttpClient))
 
