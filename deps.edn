@@ -10,7 +10,12 @@
          com.github.marksto/clj-tg-bot-api         {:mvn/version "1.2.273"}
          com.github.marksto/clj-tg-bot-api.updates {:mvn/version "1.2.273"}
          ;; HTTP layer for clj-tg-bot-api (Martian module; pulls http-kit)
-         com.github.oliyh/martian-httpkit          {:mvn/version "0.2.3"}}
+         com.github.oliyh/martian-httpkit          {:mvn/version "0.2.3"}
+         ;; webhook mode: http-kit serves the endpoint, cheshire parses the
+         ;; POSTed update JSON (both already transitive via martian-httpkit —
+         ;; pinned here because ledger.main requires them directly)
+         http-kit/http-kit                         {:mvn/version "2.8.0"}
+         cheshire/cheshire                         {:mvn/version "6.0.0"}}
  :aliases
  {:bot  {:main-opts ["-m" "ledger.main"]}
   :test {:extra-paths ["test"]

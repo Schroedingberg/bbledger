@@ -270,11 +270,17 @@ Amounts are bigdec — compare with `==` in tests, never `=` (scale differs).
 (undo! [cfg])         ; HEAD commit message starts with "expense: "?
                       ;   yes: git revert --no-edit HEAD -> return the <desc>
                       ;   no:  return nil (never revert non-bot commits)
+(push! [cfg])         ; git push origin HEAD, tolerant (swallow failure, retried
+                      ; next entry); ledger.main calls it after record/undo when
+                      ; env BBLEDGER_GIT_PUSH is set (PaaS off-site mirror)
 
 ;; main — JVM-only entry points
 (-main [& args])      ; no args: load config (path from env BBLEDGER_CONFIG,
                       ; default "config.edn"), start clj-tg-bot-api
-                      ; long-polling; per update: handle-update -> run-effects!
+                      ; long-polling — OR, when env BBLEDGER_WEBHOOK_URL is set,
+                      ; an http-kit webhook server on $PORT (default 8080) that
+                      ; setWebhooks that URL and processes POSTs identically;
+                      ; per update: handle-update -> run-effects!
                       ; with store fns + library send-message. Updates are
                       ; processed SEQUENTIALLY (single writer).
                       ; args ["summary"]: one-shot month-to-date summary to

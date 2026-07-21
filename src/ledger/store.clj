@@ -35,6 +35,15 @@
     (git! cfg "commit" "-m" (str "expense: " (:description txn)))
     nil))
 
+(defn push!
+  "Push HEAD to origin; tolerant — a failed push (offline, no remote) is
+   swallowed and retried on the next entry, so the local commit always stands.
+   The PaaS counterpart of the Hetzner bbledger-push systemd path unit; the
+   caller decides when to push (ledger.main, gated on env). Returns nil."
+  [cfg]
+  (try (git! cfg "push" "origin" "HEAD") (catch Exception _ nil))
+  nil)
+
 (defn undo!
   "Revert HEAD iff it is a bot expense commit; returns its <desc>, else nil."
   [cfg]

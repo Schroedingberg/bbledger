@@ -25,6 +25,23 @@
       (apply git dir args))
     {:dir dir :file f :cfg {:ledger-file (str f)}}))
 
+(defn- fresh-repo-with-remote
+  "Like fresh-repo, but with a bare `origin` the working repo tracks — so
+   store/push! has somewhere to push. Returns {:bare :cfg} (bare is the origin)."
+  [initial-content]
+  (let [tmp  #(.toFile (java.nio.file.Files/createTempDirectory
+                        "bbledger-store" (make-array java.nio.file.attribute.FileAttribute 0)))
+        bare (tmp)
+        work (tmp)
+        f    (java.io.File. work "household.ledger")]
+    (apply sh "git" "init" "-q" "--bare" "-b" "main" [(str bare)])
+    (spit f initial-content)
+    (doseq [args [["init" "-q" "-b" "main"] ["config" "user.email" "bot@test"]
+                  ["config" "user.name" "test"] ["remote" "add" "origin" (str bare)]
+                  ["add" "."] ["commit" "-qm" "init"] ["push" "-q" "origin" "main"]]]
+      (apply git work args))
+    {:bare bare :cfg {:ledger-file (str f)}}))
+
 (defn- commit-count [dir]
   (count (str/split-lines (:out (git dir "log" "--format=%s")))))
 
@@ -62,6 +79,27 @@
                    ;; HEAD is now the revert commit -> a second undo refuses
                    (nil? (store/undo! cfg))
                    (= before (slurp file)))))))))
+
+(deftest push-mirrors-the-latest-commit-to-origin
+  (let [{:keys [bare cfg]} (fresh-repo-with-remote fx/rules)
+        subjects #(:out (git bare "log" "--format=%s"))]
+    (store/append! cfg (core/expense {:date "2026-07-09" :payer "Alice"
+                                      :category ["Sonstiges"] :amount 12.30M
+                                      :description "Router"}))
+    (is (not (str/includes? (subjects) "expense: Router"))
+        "append! commits locally; origin unchanged until push!")
+    (store/push! cfg)
+    (is (str/includes? (subjects) "expense: Router")
+        "push! propagated the expense commit to origin")))
+
+(deftest push-tolerates-a-missing-remote
+  ;; a plain fresh-repo has no origin; push! must swallow the failure (offline
+  ;; behavior) so the local commit still stands
+  (let [{:keys [cfg]} (fresh-repo fx/rules)]
+    (store/append! cfg (core/expense {:date "2026-07-09" :payer "Bob"
+                                      :category ["Sonstiges"] :amount 1M
+                                      :description "x"}))
+    (is (nil? (store/push! cfg)))))
 
 (deftest failed-validation-leaves-file-and-history-untouched
   (let [{:keys [dir file cfg]} (fresh-repo fx/rules)

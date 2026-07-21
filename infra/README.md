@@ -58,6 +58,16 @@ One-time:
 SSH access: upload your public key to the Hetzner **project** (console →
 Security → SSH keys) — every project key is installed on the server.
 
+This Hetzner path long-polls and provisions `/data` from cloud-init + the
+`bbledger-push` unit, so it needs none of the extra env vars below. Running the
+same image as a **webhook** web service instead (e.g. on orkestr, which has no
+cloud-init/systemd) uses: `BBLEDGER_WEBHOOK_URL` (public HTTPS URL — its presence
+selects webhook mode), optional `BBLEDGER_WEBHOOK_SECRET`, `PORT` (default 8080),
+and — for the container to self-provision `/data` — `BBLEDGER_DATA_REPO` +
+`BBLEDGER_DEPLOY_KEY` (same value as `DATA_DEPLOY_KEY`; `BBLEDGER_GIT_HOST` if not
+github.com) for clone-on-boot and `BBLEDGER_GIT_PUSH=1` for push-back. See the
+orkestr section in the top-level [README](../README.md).
+
 ## Deploy
 
 1. Actions → `infra` → *Run workflow* → `plan`; review the output.

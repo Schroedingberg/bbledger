@@ -1,18 +1,47 @@
 (ns ledger.main
-  "JVM-only entry point: wires clj-tg-bot-api long-polling to the pure bot
-   layer and the store. Never loaded by tests or under babashka."
-  (:require [clojure.edn :as edn]
+  "JVM-only entry point: wires clj-tg-bot-api to the pure bot layer and the
+   store. Runs the bot either by long-polling (default) or, when a public URL
+   is available (e.g. behind a PaaS like orkestr), by webhook — an http-kit
+   server that receives Telegram's POSTs. Never loaded by tests or under
+   babashka."
+  (:require [cheshire.core :as json]
+            [clojure.edn :as edn]
+            [clojure.java.io :as io]
+            [clojure.string :as str]
             [ledger.bot :as bot]
             [ledger.store :as store]
             [marksto.clj-tg-bot-api.core :as tg]
-            [marksto.clj-tg-bot-api.updates.core :as tg-updates])
+            [marksto.clj-tg-bot-api.updates.core :as tg-updates]
+            [org.httpkit.server :as http])
   (:gen-class))
 
-(defn- load-config []
-  (let [path (or (System/getenv "BBLEDGER_CONFIG") "config.edn")
-        cfg  (edn/read-string (slurp path))]
+(defn- parse-users
+  "\"123:Alice,456:Bob\" -> {123 \"Alice\", 456 \"Bob\"} — the :users map as a
+   flat string, so a PaaS can set it without any EDN in the environment."
+  [s]
+  (into {} (for [pair (str/split s #",")
+                 :let [[id nm] (str/split pair #":" 2)]]
+             [(parse-long (str/trim id)) (str/trim nm)])))
+
+(defn- apply-overrides
+  "Layer per-field env overrides onto cfg (`env` is a getenv-like fn). Lets an
+   ephemeral/PaaS run set the test-specific values with plain env vars, no file."
+  [cfg env]
+  (cond-> cfg
+    (env "BBLEDGER_CHAT_ID") (assoc :chat-id (parse-long (env "BBLEDGER_CHAT_ID")))
+    (env "BBLEDGER_USERS")   (assoc :users   (parse-users (env "BBLEDGER_USERS")))))
+
+(defn- load-config
+  "Config = baked defaults (resources/config.default.edn) <- the BBLEDGER_CONFIG
+   file if it exists <- per-field env overrides. A real deploy ships its own
+   config.edn; an ephemeral run needs no file — just BBLEDGER_CHAT_ID/_USERS."
+  []
+  (let [default (edn/read-string (slurp (io/resource "config.default.edn")))
+        path    (or (System/getenv "BBLEDGER_CONFIG") "config.edn")
+        file    (when (.exists (io/file path)) (edn/read-string (slurp path)))
+        cfg     (apply-overrides (merge default file) #(System/getenv %))]
     (if-let [errors (bot/config-error cfg)]
-      (throw (ex-info (str "invalid config " path ": " errors) {:errors errors}))
+      (throw (ex-info (str "invalid config: " errors) {:errors errors}))
       cfg)))
 
 (defn- ->client []
@@ -21,19 +50,24 @@
 
 (defn- process-update!
   "Feed one raw update (wire shape, snake_case keywords — clj-tg-bot-api
-   delivers getUpdates results unnormalized) through the pure bot layer,
-   running its effects against the store and Telegram. Returns false so
-   the library never repeats an update."
-  [cfg client update]
-  (bot/run-effects!
-   (bot/handle-update cfg (store/read-ledger cfg) update)
-   {:append! #(store/append! cfg %)
-    :undo!   #(store/undo! cfg)
-    :send!   #(tg/make-request! client :send-message
-                                {:chat-id (:chat-id cfg) :text %})
-    :delete! #(tg/make-request! client :delete-message
-                                {:chat-id (:chat-id cfg) :message-id %})})
-  false)
+   delivers getUpdates results unnormalized, and Telegram's webhook POSTs the
+   same JSON) through the pure bot layer, running its effects against the store
+   and Telegram. When push? and the effect changed the repo (record/undo),
+   mirror the new commit to the data repo's remote (see store/push!). Returns
+   false so the long-polling library never repeats an update."
+  [cfg client push? update]
+  (let [effect (bot/handle-update cfg (store/read-ledger cfg) update)]
+    (bot/run-effects!
+     effect
+     {:append! #(store/append! cfg %)
+      :undo!   #(store/undo! cfg)
+      :send!   #(tg/make-request! client :send-message
+                                  {:chat-id (:chat-id cfg) :text %})
+      :delete! #(tg/make-request! client :delete-message
+                                  {:chat-id (:chat-id cfg) :message-id %})})
+    (when (and push? (or (:record effect) (:undo? effect)))
+      (store/push! cfg))
+    false))
 
 (defn- summary-update
   "Synthetic /summary update from a known user so the one-shot summary
@@ -46,18 +80,71 @@
              :chat       {:id (:chat-id cfg)}
              :text       "/summary"}})
 
+(defn- webhook-handler
+  "Build an http-kit handler. GET (and anything non-POST) is a health probe;
+   POSTs carrying Telegram's secret-token header are parsed and processed under
+   `lock` so updates stay strictly sequential (single writer) even though
+   http-kit dispatches requests concurrently. Always answers 200 to a genuine
+   Telegram POST — like the long-polling path's `false` return, this tells
+   Telegram not to redeliver (a redelivery could double-book an expense)."
+  [cfg client push? secret lock]
+  (fn [{:keys [request-method headers body]}]
+    (cond
+      (not= :post request-method)
+      {:status 200 :body "bbledger"}
+
+      (not= secret (get headers "x-telegram-bot-api-secret-token"))
+      {:status 403 :body "forbidden"}
+
+      :else
+      (do (try
+            (let [update (json/parse-stream (io/reader body) true)]
+              (locking lock
+                (process-update! cfg client push? update)))
+            (catch Exception e
+              (.printStackTrace e)))
+          {:status 200 :body "ok"}))))
+
+(defn- run-webhook!
+  "Register the webhook URL with Telegram, then serve it with http-kit until
+   killed. The secret guards the endpoint: Telegram echoes it in every POST's
+   `X-Telegram-Bot-Api-Secret-Token` header (BBLEDGER_WEBHOOK_SECRET, or a
+   fresh random one each boot). `drop-pending-updates` avoids replaying a
+   backlog — including anything queued while long-polling — on (re)deploy."
+  [cfg client push? url]
+  (let [secret (or (System/getenv "BBLEDGER_WEBHOOK_SECRET") (str (random-uuid)))
+        port   (Integer/parseInt (or (System/getenv "PORT") "8080"))]
+    (tg/make-request! client :set-webhook
+                      {:url                  url
+                       :secret-token         secret
+                       :allowed-updates      ["message" "edited_message"]
+                       :drop-pending-updates true})
+    (http/run-server (webhook-handler cfg client push? secret (Object.)) {:port port})
+    (println (str "bbledger webhook listening on :" port " for " url))
+    @(promise)))
+
 (defn -main
-  "No args: run the bot (config path from env BBLEDGER_CONFIG, default
-   \"config.edn\"; token from env BBLEDGER_BOT_TOKEN). Arg \"summary\":
-   send a one-shot month-to-date summary to the group and exit."
+  "No args: run the bot. When BBLEDGER_WEBHOOK_URL is set, serve that webhook
+   (http-kit on $PORT, default 8080); otherwise long-poll. Config path from env
+   BBLEDGER_CONFIG (default \"config.edn\"); token from env BBLEDGER_BOT_TOKEN.
+   Arg \"summary\": send a one-shot month-to-date summary to the group and exit."
   [& args]
   (let [cfg    (load-config)
-        client (->client)]
-    (if (= "summary" (first args))
-      (do (process-update! cfg client (summary-update cfg))
+        client (->client)
+        ;; mirror each new commit to the data repo's remote (PaaS parity with
+        ;; the Hetzner bbledger-push unit); off unless explicitly enabled
+        push?  (some? (System/getenv "BBLEDGER_GIT_PUSH"))]
+    (cond
+      (= "summary" (first args))
+      (do (process-update! cfg client push? (summary-update cfg))
           (System/exit 0))
+
+      (System/getenv "BBLEDGER_WEBHOOK_URL")
+      (run-webhook! cfg client push? (System/getenv "BBLEDGER_WEBHOOK_URL"))
+
+      :else
       (do ;; single consumer thread => updates are handled strictly sequentially
         (tg-updates/setup-long-polling!
-         {:long-polling {:update-handler #(process-update! cfg client %)}}
+         {:long-polling {:update-handler #(process-update! cfg client push? %)}}
          client)
         @(promise)))))
