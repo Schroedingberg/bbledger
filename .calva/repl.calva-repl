@@ -1,0 +1,68 @@
+(when-let [requires (resolve 'clojure.main/repl-requires)] (clojure.core/apply clojure.core/require @requires))
+clj꞉user꞉> 
+(when-let [requires (resolve 'clojure.main/repl-requires)] (clojure.core/apply clojure.core/require @requires))
+clj꞉user꞉> 
+(chunk-lines "234 ")
+; Syntax error compiling at (src/ledger/bot.clj:85:1).
+; Unable to resolve symbol: chunk-lines in this context
+clj꞉ledger.bot꞉> 
+(chunk-lines "234 ")
+clj꞉ledger.bot꞉> 
+(chunk-lines (repeat "abcde" 1000))
+; Execution error (ClassCastException) at ledger.bot/eval17359 (bot.clj:85).
+; class java.lang.String cannot be cast to class java.lang.Number (java.lang.String and java.lang.Number are in module java.base of loader 'bootstrap')
+clj꞉ledger.bot꞉> 
+(chunk-lines (repeat 4 "abcde"))
+; Execution error (ClassCastException) at ledger.bot/chunk-lines (bot.clj:83).
+; class clojure.lang.Repeat cannot be cast to class java.lang.CharSequence (clojure.lang.Repeat is in unnamed module of loader 'app'; java.lang.CharSequence is in module java.base of loader 'bootstrap')
+clj꞉ledger.bot꞉> 
+(chunk-lines (repeat 4 "abcde"))
+; Execution error (ClassCastException) at ledger.bot/chunk-lines (bot.clj:83).
+; class clojure.lang.Repeat cannot be cast to class java.lang.CharSequence (clojure.lang.Repeat is in unnamed module of loader 'app'; java.lang.CharSequence is in module java.base of loader 'bootstrap')
+clj꞉ledger.bot꞉> 
+(chunk-lines (repeat 4 "abcde"))
+; Execution error (ClassCastException) at ledger.bot/chunk-lines (bot.clj:83).
+; class clojure.lang.Repeat cannot be cast to class java.lang.CharSequence (clojure.lang.Repeat is in unnamed module of loader 'app'; java.lang.CharSequence is in module java.base of loader 'bootstrap')
+clj꞉ledger.bot꞉> 
+(repeat 4 3)
+clj꞉ledger.bot꞉> 
+(repeat 4 "asd")
+clj꞉ledger.bot꞉> 
+(chunk-lines (repeat 4 "abcde"))
+; Execution error (ClassCastException) at ledger.bot/chunk-lines (bot.clj:83).
+; class clojure.lang.Repeat cannot be cast to class java.lang.CharSequence (clojure.lang.Repeat is in unnamed module of loader 'app'; java.lang.CharSequence is in module java.base of loader 'bootstrap')
+clj꞉ledger.bot꞉> 
+(repeat 4 "asd")
+clj꞉ledger.bot꞉> 
+(repeat 4 " asd ")
+clj꞉ledger.bot꞉> 
+(chunk-lines (map str (repeat 4 " abcde ")))
+; Execution error (ClassCastException) at ledger.bot/chunk-lines (bot.clj:83).
+; class clojure.lang.LazySeq cannot be cast to class java.lang.CharSequence (clojure.lang.LazySeq is in unnamed module of loader 'app'; java.lang.CharSequence is in module java.base of loader 'bootstrap')
+clj꞉ledger.bot꞉> 
+(map str (repeat 4 " asd "))
+clj꞉ledger.bot꞉> 
+(mapcat str (repeat 4 " asd "))
+clj꞉ledger.bot꞉> 
+(str ["a " "b"])
+clj꞉ledger.bot꞉> 
+(apply str (repeat 4 " asd "))
+clj꞉ledger.bot꞉> 
+(chunk-lines (apply str (repeat 4 " abcde ")))
+clj꞉ledger.bot꞉> 
+(chunk-lines (apply str (repeat 100 " abcde ")))
+clj꞉ledger.bot꞉> 
+(chunk-lines (apply str (repeat 4000 " abcde ")))
+clj꞉ledger.bot꞉> 
+(count (chunk-lines (apply str (repeat 4000 " abcde "))))
+clj꞉ledger.bot꞉> 
+(count (chunk-lines (apply str (repeat 4000 " abcdef "))))
+clj꞉ledger.bot꞉> 
+(count (chunk-lines (apply str (repeat 100000 " abcdef "))))
+clj꞉ledger.bot꞉> 
+(count (chunk-lines (apply str (repeat 100000 " abcdef\n "))))
+clj꞉ledger.bot꞉> 
+(count (chunk-lines (apply str (repeat 1000 " abcdef\n "))))
+clj꞉ledger.bot꞉> 
+(chunk-lines (apply str (repeat 1000 " abcdef\n ")))
+clj꞉ledger.bot꞉> 

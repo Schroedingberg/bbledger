@@ -42,8 +42,10 @@ Functional core / imperative shell. **`ledger.core` is the single public busines
 (pure, data in/data out); `ledger.parse` (text→data, instaparse grammar in `resources/ledger.bnf`)
 and `ledger.report` (balance inference, auto-posting rules, rendering) are internals behind it.
 
-The bot pipeline: `ledger.main` (JVM wiring: clj-tg-bot-api long-polling, strictly sequential
-single consumer) → `ledger.bot/handle-update` (pure: raw snake_case Telegram update map in,
+The bot pipeline: `ledger.main` (JVM wiring: clj-tg-bot-api long-polling by default, or —
+when `BBLEDGER_WEBHOOK_URL` is set, e.g. on a PaaS like orkestr — an http-kit webhook server
+that `setWebhook`s the URL and serializes POSTs through the same pipeline under a `locking`,
+preserving the single-writer discipline) → `ledger.bot/handle-update` (pure: raw snake_case Telegram update map in,
 **effect description** out: `{:record txn :reply s}` / `{:reply s}` / `{:undo? true}` / nil) →
 `ledger.bot/run-effects!` executes effects via injected fns (`:append!` `:undo!` `:send!`),
 which is why the whole pipeline is testable under bb with no network.

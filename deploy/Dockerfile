@@ -18,4 +18,10 @@ ARG VERSION=dev
 ENV BBLEDGER_VERSION=$VERSION
 
 ENV BBLEDGER_CONFIG=/data/config.edn
+
+# webhook mode (BBLEDGER_WEBHOOK_URL set) serves here; long-polling ignores it.
+# orkestr auto-detects the exposed port; it also injects $PORT, which the app
+# prefers over this default.
+EXPOSE 8080
+
 CMD ["clojure", "-M:bot"]

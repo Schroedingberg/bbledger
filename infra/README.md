@@ -58,6 +58,12 @@ One-time:
 SSH access: upload your public key to the Hetzner **project** (console →
 Security → SSH keys) — every project key is installed on the server.
 
+This Hetzner path long-polls, so it needs none of the webhook env vars. Running
+the same image as a **webhook** web service instead (e.g. on orkestr) uses
+`BBLEDGER_WEBHOOK_URL` (public HTTPS URL — its presence selects webhook mode),
+optional `BBLEDGER_WEBHOOK_SECRET`, and `PORT` (default 8080); see the
+orkestr section in the top-level [README](../README.md).
+
 ## Deploy
 
 1. Actions → `infra` → *Run workflow* → `plan`; review the output.

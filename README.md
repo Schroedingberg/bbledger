@@ -54,7 +54,7 @@ business-logic API; contracts are frozen in [CONTRACT.md](CONTRACT.md).
 | `ledger.core`   | public facade: expense, settlement, summary, ...  | bb + JVM |
 | `ledger.bot`    | pure: updates -> effect descriptions              | bb + JVM |
 | `ledger.store`  | append + validate + git commit per entry          | bb + JVM |
-| `ledger.main`   | clj-tg-bot-api long-polling wiring                | JVM only |
+| `ledger.main`   | clj-tg-bot-api wiring (long-polling or webhook)   | JVM only |
 | `ledger.cli`    | `bb ledger` subcommands                           | bb       |
 
 Tests run on both runtimes: `bb test` and `clojure -M:test`.
@@ -101,6 +101,33 @@ secrets inventory are in [infra/README.md](infra/README.md).
 
 Local smoke run without Docker (JVM 21+):
 `BBLEDGER_CONFIG=... BBLEDGER_BOT_TOKEN=... clojure -M:bot`
+
+## Deployment — orkestr (PaaS, webhook)
+
+The bot also runs as a web service on a container PaaS such as
+[orkestr](https://orkestr.eu/docs): connect the repo, it builds the
+[`deploy/Dockerfile`](deploy/Dockerfile) and gives the app a public HTTPS URL.
+Setting **`BBLEDGER_WEBHOOK_URL`** flips `ledger.main` from long-polling to
+**webhook** mode — an http-kit server that `setWebhook`s that URL with Telegram
+and receives updates as POSTs (on `$PORT`, default `8080`; the exposed port and
+Dockerfile are auto-detected). Unset, nothing changes: the Hetzner/systemd
+deploy above keeps long-polling.
+
+1. `orkestr init` (link the repo) and add a **volume mounted at `/data`** — the
+   ledger git repo lives there, same as `:ledger-file` in the config.
+2. Seed the volume once with your `household.ledger` + `config.edn` (as in the
+   manual steps above), initialised as a git repo.
+3. Set env vars: `BBLEDGER_BOT_TOKEN`, `BBLEDGER_CONFIG=/data/config.edn`,
+   `BBLEDGER_WEBHOOK_URL=https://<your-app-url>` (the URL orkestr assigns), and
+   optionally `BBLEDGER_WEBHOOK_SECRET` (any string — else a random one is
+   generated per boot; Telegram echoes it in the
+   `X-Telegram-Bot-Api-Secret-Token` header, which the server verifies).
+4. `orkestr deploy .`, then send `12,30 Test` in the group and expect the ✓.
+
+> **Persistence caveat:** entries are committed to the `/data` volume (which
+> survives redeploys) but **not** pushed off-site — the systemd path unit that
+> mirrors to the private data repo only exists on the Hetzner VM. Off-site
+> push-back from the container is a follow-up. Back up the volume meanwhile.
 
 ## License
 
